@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="enabledOnReformat" value="true" />
+    <option name="sdkUUID" value="8b1029fb-40cb-4795-a881-743f15564830" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.11 (My_PyQt5_Project_app)" project-jdk-type="Python SDK" />
+</project>

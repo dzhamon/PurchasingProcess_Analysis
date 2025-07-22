@@ -1,0 +1,62 @@
+QMainWindow {
+    background-color: #232323;
+}
+QTabBar::tab {
+    font-size: 14px;
+    padding: 10px;
+    color: white;
+    background-color: #2d89ef;
+    border: 1px solid #555;
+    border-radius: 5px;
+}
+
+QTabBar::tab:selected {
+    background-color: lightblue;
+    color: black; /* для контраста текста */
+}
+
+QToolTip {
+    background-color: #1e1e1e;
+    color: white;
+    border: 1px solid white;
+}
+
+QMenuBar {
+    background-color: #333;
+    color: white;
+}
+
+QMenuBar::item:selected {
+    background-color: #444;
+}
+
+QMenu {
+    background-color: lightblue;
+    color: black;
+}
+
+QMenu::item:selected {
+    background-color: #555;
+}
+
+QStatusBar {
+    background-color: #282828;
+    color: white;
+}
+QMenuBar {
+    font-size: 13px; /* Размер шрифта */
+    padding: 2px;    /* Отступы вокруг текста */
+    background-color: black; /* Фон */
+    color: white;    /* Цвет текста */
+}
+
+QMenuBar::item {
+    padding: 14px;   /* Размеры области элемента */
+    background-color: black; /* Цвет фона */
+    color: white;    /* Цвет текста */
+}
+
+QMenuBar::item:selected {
+    background-color: lightblue; /* Цвет фона при наведении */
+    color: black; /* Цвет текста при наведении */
+}

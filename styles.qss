@@ -1,0 +1,47 @@
+QMainWindow {
+    background-color: #f0f0f0; /* Светло-серый фон */
+    color: black; /* Основной цвет текста */
+}
+
+QTabBar::tab {
+    font-size: 14px;
+    padding: 10px;
+    color: black; /* Черный текст */
+    background-color: #e0e0e0; /* Светло-серый фон вкладок */
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+QTabBar::tab:selected {
+    background-color: #d0d0d0; /* Темно-серый для активной вкладки */
+    color: black; /* Черный текст */
+}
+
+QToolTip {
+    background-color: #ffffe0; /* Светло-желтый фон */
+    color: black; /* Черный текст */
+    border: 1px solid black;
+}
+
+QMenuBar {
+    background-color: #e0e0e0; /* Светло-серый фон меню */
+    color: black; /* Черный текст */
+}
+
+QMenuBar::item:selected {
+    background-color: #d0d0d0; /* Темно-серый при наведении */
+}
+
+QMenu {
+    background-color: #f8f8f8; /* Светло-серый фон выпадающего меню */
+    color: black; /* Черный текст */
+}
+
+QMenu::item:selected {
+    background-color: #d0d0d0; /* Темно-серый при наведении */
+}
+
+QStatusBar {
+    background-color: #f0f0f0; /* Светлый фон строки состояния */
+    color: black; /* Черный текст */
+}
