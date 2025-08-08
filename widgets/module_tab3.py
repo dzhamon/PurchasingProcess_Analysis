@@ -16,10 +16,12 @@ from utils.PandasModel_previous import PandasModel
 class Tab3Widget(QWidget):
 	# Cигнал, который будет испускаться при изменении фильтрованных данных
 	filtered_data_changed = pyqtSignal(pd.DataFrame)
+	my_custom_signal = pyqtSignal(pd.DataFrame)
 	
 	def __init__(self):
 		super().__init__()
 		self.contract_df = pd.DataFrame()
+		self.base_contract_df = pd.DataFrame
 		self.init_ui()  # инициализация пользовательского интерфейса
 	
 	def init_ui(self):
@@ -104,6 +106,15 @@ class Tab3Widget(QWidget):
 			                                                         'product_name': 'string',
 			                                                         'contract_currency': 'string'},
 			                                     params=(start_date, end_date))
+			
+			# Создаем новый датафрейм, в который копируем только что скачанный contract_df.
+			# Он понадобится в дальнейшем анализе - методе Херфиндаля-Хиршмана при поиске альтернативных поставщиков
+			self.base_contract_df = self.contract_df.copy()
+			
+			# Испускаем сигнал для передачи датафрейма в метод анализа
+			self.my_custom_signal.emit(self.base_contract_df)   #сигнал должен быть пойман в методе
+			
+			# Созданный base_contract_df нужно передать в модуль анализа
 			
 		# теперь подтягиваем соответствующие лоты и project_name из data_kp
 		query_kp = "SELECT lot_number, project_name FROM data_kp"

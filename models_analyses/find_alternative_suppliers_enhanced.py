@@ -1,261 +1,504 @@
 import pandas as pd
-from utils.config import SQL_PATH
-import sqlite3
-from utils.functions import cleanDataDF, CurrencyConverter
+from typing import Dict, Any
+from datetime import datetime, timedelta
 
 
-def find_alternative_suppliers_enhanced(merged_df, hhi_data):
-	"""
-	   Функция поиска альтернативных поставщиков с учетом HHI и данных из data_kp.
-	"""
-	
-	# 1. Предобработка data_kp_df
-	data_kp_df = pd.DataFrame()
-	data_kp_df = preprocess_data_kp()
-	print('Работаем с датафреймом : ', data_kp_df.columns)
-	
-	results = []
-	
-	for discipline in merged_df['discipline'].unique():
-		discipline_hhi = hhi_data[hhi_data['discipline'] == discipline]['hhi_index'].values[0]
-		concentration_level = get_concentration_level(discipline_hhi) # определение уровня концентрации по величине HHI
-		discipline_data = merged_df[merged_df['discipline'] == discipline]
-		discipline_historical_data = data_kp_df[
-			data_kp_df['discipline'] == discipline]
-		print(f"Этап для {discipline} пройден")
-		
-		if concentration_level == "Высокая":
-			alternatives = find_alternatives_all_products(
-				discipline_data, discipline_historical_data
-			)
-		elif concentration_level == "Средняя":
-			major_suppliers = get_major_suppliers(discipline_data) # идентификация наиболее значимых поставщиков
-			alternatives = find_alternatives_major_suppliers(
-				discipline_data, discipline_historical_data, major_suppliers
-			) # здесь фокусируемся на поиске замен для найденных ключевых поставщиков
-		else:  # Низкая
-			file_name = f"Анализ_поставщ_{discipline}_low_concentr.xlsx"
-			analysis_output = analyze_supplier_structure(discipline_data, discipline_historical_data)
-			
-			# создаем датафрейм из списка поставщиков
-			suppliers_df = pd.DataFrame({'Поставщик': analysis_output['all_suppliers']})
-			# создаем датафрейм из результатов анализа стабильности
-			stability_df = pd.DataFrame(analysis_output['supplier_stability'])
-			stability_df['years_with_company'] = stability_df['years_with_company'].apply(lambda x: f"{x:.2f}".replace('.', ','))
-			# создаем датафрейм с основными метриками
-			summary_df = pd.DataFrame({
-				'Количество поставщиков': [analysis_output['num_suppliers']],
-				'Средняя сумма контракта': [f"{analysis_output['avg_share']:.2f}"],
-				'Стандартное отклонение цен': [f"{analysis_output['price_std']:2f}"]
-			})
-			
-			# Записываем датафреймы в разные листы Excel файла
-			with pd.ExcelWriter(file_name) as writer:
-				suppliers_df.to_excel(writer, sheet_name='Все поставщики', index=False)
-				stability_df.to_excel(writer, sheet_name='Стабильность поставщиков', index=False)
-				summary_df.to_excel(writer, sheet_name='Основные метрики', index=False)
-			
-			print("Результаты анализа сохранены в файл 'анализ_поставщиков_низкая_концентрация.xlsx'")
-		
-	return
+# Вспомогательные функции, которые не зависят от состояния класса, остаются вне его.
+def calculate_years_experience(supplier_contracts):
+    """
+    Рассчитывает количество лет опыта поставщика.
+    """
+    if "contract_signing_date" not in supplier_contracts.columns or supplier_contracts.empty:
+        return 0
+
+    try:
+        dates = pd.to_datetime(supplier_contracts["contract_signing_date"], errors="coerce").dropna()
+        if dates.empty or len(dates) < 1:
+            return 0
+        first_date = dates.min()
+        last_date = dates.max()
+        years_diff = (last_date - first_date).days / 365.25
+        return max(years_diff, 1.0) if len(dates) > 0 else 0
+    except Exception as e:
+        print(f"Ошибка расчета опыта поставщика: {str(e)}")
+        return 0
 
 
-def preprocess_data_kp():
-	data_kp_df = pd.DataFrame()
-	try:
-		# соединяемся сбазой данных
-		db_path = SQL_PATH
-		conn = sqlite3.connect(db_path)
-		# Создаем строку с плейсхолдерами для каждого lot_number
-		
-		query = f"""
-					SELECT lot_number, close_date, good_name, good_count, supplier_qty, winner_name, discipline,
-							unit_price, total_price, currency  FROM data_kp
-				"""
-		
-		data_kp_df = pd.read_sql_query(query, conn)
-		conn.close()
-		
-		# Отладочные принты
-		print("Типы данных после чтения из базы:")
-		print(data_kp_df.dtypes)
-		print("Пример первых 5 строк:")
-		print(data_kp_df.head())
-		
-		data_kp_df = cleanDataDF(data_kp_df.copy())
-		
-		data_kp_df['lot_number'] = data_kp_df['lot_number'].astype(str)  # переводим номера лотов в строковый тип
-		data_kp_df['lot_number'] = data_kp_df['lot_number'].astype(str)  # то же самое с базой Лотов
-		
-		# Переведем стоимости в единую валюту EUR
-		
-		columns_info = [
-			('unit_price', 'currency', 'unit_price_eur'),
-			('total_price', 'currency', 'total_price_eur')
-		]
-		converter = CurrencyConverter()
-		
-		# Конвертируем и сохраняем два столбца
-		converted_df = converter.convert_multiple_columns(
-			df=data_kp_df, columns_info=columns_info)
-		
-		data_kp_df['total_price_eur'] = converted_df['total_price_eur'].copy()
-		data_kp_df['unit_price_eur'] = converted_df['unit_price_eur'].copy()
-		
-		# Предобработка good_name
-		data_kp_df['good_name'] = data_kp_df['good_name'].str.lower().str.strip()
-		data_kp_df['good_name'] = data_kp_df['good_name'].str.replace(r'[^\w\s]', '', regex=True)  # Удаление пунктуации
-		
-		# Приведеме close_date в datetime
-		data_kp_df['close_date'] = pd.to_datetime(data_kp_df['close_date'])
-		
-		return data_kp_df
-	
-	except Exception as e:
-		print(f"Ошибка при формировании ДатаФрейма : {e}")
-		return pd.DataFrame()  # Возвращаем пустой DataFrame в случае ошибки
+def calculate_recommendation_score(supplier_info, current_avg_price):
+    """
+    Рассчитывает интегральный рейтинг поставщика (0-100).
+    """
+    score = 50
+    experience_score = min(supplier_info["years_experience"] * 5, 25)
+    score += experience_score
+    contracts_score = min(supplier_info["contracts_count"] * 2, 15)
+    score += contracts_score
+    if current_avg_price > 0 and supplier_info["avg_price"] > 0:
+        price_diff = (
+            current_avg_price - supplier_info["avg_price"]
+        ) / current_avg_price
+        if price_diff > 0:
+            price_score = min(price_diff * 100, 20)
+        else:
+            price_score = max(price_diff * 50, -10)
+        score += price_score
+    if supplier_info["price_std"] > 0:
+        stability_score = max(
+            10 - supplier_info["price_std"] / supplier_info["avg_price"] * 100, 0
+        )
+        score += stability_score
+    diversification_score = min(supplier_info["projects_count"] * 2, 10)
+    score += diversification_score
+    return min(max(score, 0), 100)
 
 
-def get_concentration_level(hhi):
-	"""
-		Определение уровня концентрации по HHI
-	"""
-	if hhi < 1500:
-		return "Низкая"
-	elif 1500 <= hhi <= 2500:
-		return "Средняя"
-	else:
-		return "Высокая"
+def identify_supplier_advantages(supplier_info, current_avg_price):
+    """
+    Определяет конкурентные преимущества поставщика.
+    """
+    advantages = []
+    if supplier_info["years_experience"] >= 3:
+        advantages.append(
+            f"Большой опыт работы ({supplier_info['years_experience']:.1f} лет)"
+        )
+    if supplier_info["contracts_count"] >= 10:
+        advantages.append(
+            f"Высокая контрактная активность ({supplier_info['contracts_count']} контрактов)"
+        )
+    # Используем current_avg_price (который будет unit_price_eur)
+    if current_avg_price > 0 and supplier_info["avg_price"] < current_avg_price * 0.9:
+        savings = (1 - supplier_info["avg_price"] / current_avg_price) * 100
+        advantages.append(f"Ценовое преимущество (экономия {savings:.1f}%)")
+    if supplier_info["projects_count"] > 1:
+        advantages.append(
+            f"Работа на разных проектах ({supplier_info['projects_count']} проектов)"
+        )
+    if supplier_info["price_std"] / supplier_info["avg_price"] < 0.15:
+        advantages.append("Стабильные цены")
+    return advantages
 
 
-def find_alternatives_all_products(discipline_data, discipline_historical_data):
-	"""
-	Поиск альтернатив для всех товаров в дисциплине.
-	"""
-	alternatives = []
-	for product in discipline_data['product_name'].unique():
-		current_data = discipline_data[discipline_data['product_name'] == product]
-		historical_data = discipline_historical_data[discipline_historical_data['good_name'] == product]
-		alternatives.append(compare_and_analyze(current_data, historical_data))
-		print(alternatives)
-	return alternatives
+def assess_supplier_risks(supplier_info):
+    """
+    Оценивает потенциальные риски работы с поставщиком.
+    """
+    risks = []
+    if supplier_info["years_experience"] < 1:
+        risks.append("Недостаточный опыт работы")
+    if supplier_info["contracts_count"] < 3:
+        risks.append("Малое количество контрактов")
+    if supplier_info["price_std"] / supplier_info["avg_price"] > 0.3:
+        risks.append("Нестабильные цены")
+    if supplier_info["last_contract"]:
+        last_contract_date = pd.to_datetime(supplier_info["last_contract"])
+        if datetime.now() - last_contract_date > timedelta(days=365):
+            risks.append("Длительный перерыв в работе")
+    return risks
 
 
-def find_alternatives_major_suppliers(discipline_data, discipline_historical_data, major_suppliers):
-	"""
-	Поиск альтернатив только для товаров, поставляемых major_suppliers.
-	"""
-	alternatives = []
-	for product in discipline_data['product_name'].unique():
-		if any(supplier in major_suppliers for supplier in
-		       discipline_data[discipline_data['product_name'] == product]['counterparty_name'].unique()):
-			current_data = discipline_data[discipline_data['product_name'] == product]
-			historical_data = discipline_historical_data[discipline_historical_data['good_name'] == product]
-			alternatives.append(compare_and_analyze(current_data, historical_data))
-		print(alternatives)
-	return alternatives
+def generate_supplier_recommendation(supplier_info, current_avg_price):
+    """
+    Генерирует текстовую рекомендацию по поставщику.
+    """
+    if supplier_info["contracts_count"] >= 5 and supplier_info["years_experience"] >= 2:
+        if current_avg_price > 0 and supplier_info["avg_price"] < current_avg_price:
+            return "⭐ РЕКОМЕНДУЕТСЯ: Опытный поставщик с привлекательными ценами"
+        else:
+            return "✅ ПОДХОДИТ: Надежный поставщик с хорошей репутацией"
+    elif supplier_info["contracts_count"] >= 2:
+        return "⚠️ ОСТОРОЖНО: Ограниченный опыт, требует дополнительной проверки"
+    else:
+        return "❌ НЕ РЕКОМЕНДУЕТСЯ: Недостаточный опыт работы"
 
 
-def analyze_supplier_structure(discipline_data, discipline_historical_data):
-	"""
-	Анализ структуры поставщиков (для низкой концентрации).
-	"""
-	all_suppliers = discipline_data['counterparty_name'].unique().tolist()
-	num_suppliers = len(all_suppliers)
-	total_contract_amount = discipline_data['total_contract_amount_eur'].sum()
-	avg_share = total_contract_amount / num_suppliers if num_suppliers > 0 else 0
-	price_std = discipline_data['unit_price_eur'].std()
-	
-	# Анализ стабильности
-	supplier_stability = discipline_data.groupby('counterparty_name')['contract_signing_date'].min().reset_index()
-	supplier_stability['years_with_company'] = (pd.to_datetime('now') - supplier_stability['contract_signing_date']).dt.days / 365
-	# Сортировка по убыванию years_with_company
-	supplier_stability = supplier_stability.sort_values(by='years_with_company', ascending=False).reset_index(drop=True)
-	
-	analysis_results = {
-		"all_suppliers": all_suppliers,
-		"num_suppliers": num_suppliers,
-		"avg_share": avg_share,
-		"price_std": price_std,
-		"supplier_stability": supplier_stability.to_dict(orient='records'),
-	}
-	return analysis_results
+def analyze_market_position(current_suppliers, alternative_suppliers, all_suppliers):
+    """
+    Анализирует рыночную позицию и конкуренцию.
+    """
+    total_suppliers = len(all_suppliers)
+    current_count = len(current_suppliers)
+    alternative_count = len(alternative_suppliers)
 
-def compare_and_analyze(current_data, historical_data):
-	"""
-	Сравнение текущих и исторических поставщиков и формирование рекомендаций.
-	"""
-	comparison_results = {}
-	
-	# 1. Сравнение цен
-	current_avg_price = current_data['unit_price_eur'].mean()
-	historical_avg_price = historical_data['unit_price_eur'].mean()
-	price_comparison = {
-		"current_avg": current_avg_price,
-		"historical_avg": historical_avg_price,
-		"diff_percent": (
-				current_avg_price - historical_avg_price) / historical_avg_price * 100 if historical_avg_price else None,
-	}
-	comparison_results['price_comparison'] = price_comparison
-	
-	# 2. Анализ стабильности поставщиков
-	current_suppliers = set(current_data['counterparty_name'])
-	historical_suppliers = set(historical_data['winner_name'])
-	new_suppliers = current_suppliers - historical_suppliers
-	lost_suppliers = historical_suppliers - current_suppliers
-	stable_suppliers = current_suppliers.intersection(historical_suppliers)
-	comparison_results['supplier_dynamics'] = {
-		"new": list(new_suppliers),
-		"lost": list(lost_suppliers),
-		"stable": list(stable_suppliers),
-	}
-	
-	# 3. Формирование рекомендаций
-	recommendations = []
-	if price_comparison['diff_percent'] and price_comparison[
-		'diff_percent'] > 10:  # Пример: если текущие цены выше на 10%
-		expensive_current_suppliers = current_data[current_data['unit_price_eur'] > historical_avg_price][
-			'counterparty_name'].unique()
-		recommendations.append(
-			f"Рассмотреть возможность замены поставщиков: {expensive_current_suppliers} (текущие цены выше исторических).")
-	
-	if lost_suppliers:
-		recommendations.append(f"Проанализировать причины потери поставщиков: {list(lost_suppliers)}.")
-	
-	comparison_results['recommendations'] = recommendations
-	
-	return comparison_results
+    market_shares = {}
+    total_contracts = sum(info["contracts_count"] for info in all_suppliers.values())
+    for supplier, info in all_suppliers.items():
+        market_shares[supplier] = (
+            info["contracts_count"] / total_contracts if total_contracts > 0 else 0
+        )
+    current_concentration = sum(
+        market_shares.get(supplier, 0) for supplier in current_suppliers
+    )
 
-def get_major_suppliers(discipline_data):
-	"""
-	   Определение major поставщиков (доля >= 8% или входит в top-7)
-	   """
-	threshold = 0.08  # 8%
-	top_n = 7
-	major_suppliers = set()
-	
-	# Группируем по поставщику и суммируем сумму контрактов
-	supplier_amounts = discipline_data.groupby('counterparty_name')['total_contract_amount_eur'].sum()
-	
-	# Рассчитываем общую сумму контрактов по дисциплине
-	total_discipline_amount = supplier_amounts.sum()
-	
-	if total_discipline_amount == 0:
-		return []  # Избегаем деления на ноль
-	
-	# Рассчитываем долю рынка каждого поставщика
-	market_shares = supplier_amounts / total_discipline_amount
-	
-	# Создаем DataFrame с долями рынка
-	market_share_df = pd.DataFrame({'market_share': market_shares})
-	
-	# Определяем major поставщиков по порогу
-	major_by_threshold = market_share_df[market_share_df['market_share'] >= threshold].index.tolist()
-	
-	# Определяем top-N поставщиков
-	top_n_suppliers = market_share_df.nlargest(top_n, 'market_share').index.tolist()
-	
-	# Объединяем и удаляем дубликаты
-	major_suppliers = list(set(major_by_threshold + top_n_suppliers))
-	
-	return major_suppliers
+    return {
+        "total_market_suppliers": total_suppliers,
+        "current_suppliers_count": current_count,
+        "alternative_suppliers_count": alternative_count,
+        "market_coverage_current": current_concentration,
+        "diversification_potential": (
+            alternative_count / total_suppliers if total_suppliers > 0 else 0
+        ),
+        "market_competitiveness": (
+            "Высокая"
+            if alternative_count > current_count
+            else "Средняя" if alternative_count > 0 else "Низкая"
+        ),
+    }
+
+
+def generate_product_recommendation_summary(product_alternatives):
+    """
+    Генерирует рекомендацию по продукту на основе найденных альтернатив.
+    """
+    alternatives_count = len(product_alternatives["alternative_suppliers"])
+    if alternatives_count == 0:
+        return "Критический риск: альтернативы не найдены. Требуется расширение поиска поставщиков."
+    elif alternatives_count <= 2:
+        return f"Ограниченный выбор: {alternatives_count} альтернатив. Рекомендуется активный поиск новых поставщиков."
+    else:
+        return f"Хорошие возможности диверсификации: {alternatives_count} альтернатив доступно."
+
+
+class AlternativeSuppliersAnalyzer:
+    def __init__(self):
+        self.all_contracts_data = None
+        print("AlternativeSuppliersAnalyzer: Инициализирован.")
+
+    def receive_contract_data(self, df: pd.DataFrame):
+        print("AlternativeSuppliersAnalyzer: Данные контрактов получены через сигнал!")
+        self.all_contracts_data = df
+        print(
+            f"AlternativeSuppliersAnalyzer: DataFrame содержит {len(df)} строк и {len(df.columns)} столбцов."
+        )
+
+    def run_analysis(
+        self, current_project_data: pd.DataFrame,
+        target_disciplines: list = None,
+        target_supplier: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Запускает полный цикл поиска альтернативных поставщиков для одной или нескольких дисциплин.
+        Возвращает агрегированные результаты для экспорта в Excel.
+
+        Args:
+            current_project_data (pd.DataFrame): Отфильтрованные данные по текущему проекту/лотам/контрактам.
+            
+            target_disciplines (list, optional): Список дисциплин для анализа. Если None, анализируются все
+            дисциплины в current_project_data.
+
+        Returns:
+            Dict[str, Any]: Словарь, где ключ - это имя дисциплины, а значение -
+                            отформатированные результаты анализа для этой дисциплины.
+                            Формат для каждой дисциплины:
+                            {
+                                "product_name": {
+                                    "current_suppliers": [...],
+                                    "alternatives_found": int,
+                                    "recommendation": "text",
+                                    "alternative_suppliers": [...] # полный список
+                                },
+                                ...
+                            }
+        """
+        if self.all_contracts_data is None:
+            print(
+                "ОШИБКА: Нет полных данных контрактов (self.all_contracts_data) для запуска анализа."
+            )
+            return {}
+        
+        all_disciplines_results = {}
+        
+        # Определяем список дисциплин для анализа
+        if target_disciplines is None:
+            disciplines_to_analyze =  current_project_data['discipline'].dropna().unique().tolist()
+        else:
+            disciplines_to_analyze = [d for d in target_disciplines if d in current_project_data['discipline'].unique()]
+            
+        if not disciplines_to_analyze:
+            print("Предупреждение: Нет дисциплин для анализа в предоставленных данных.")
+            return {}
+        
+        print(f"Начинаем анализ по дисциплинам: {'. '.join(disciplines_to_analyze)}")
+        
+        for discipline in disciplines_to_analyze:
+            print(f"\n==== Анализ по дисциплине: {discipline} ====")
+            
+            # фильтруем данные для текущей дисциплины
+            discipline_data = current_project_data[current_project_data['discipline'] == discipline]
+            
+            if discipline_data.empty:
+                print(f" Нет данных для дисциплины {discipline}, пропускаем")
+                continue
+
+            # Выполняем основной логический поиск для данной дисциплины
+            raw_alternatives_by_product = self._find_alternative_suppliers_logical(
+                discipline_data, discipline #  передаем отфильтрованные данные и текущую дисциплину
+            )
+
+            # Форматируем результаты для данной дисциплины
+            formatted_for_discipline = {}
+            for product, info in raw_alternatives_by_product.items():
+                formatted_for_discipline[product] = {
+                    "current_suppliers": info["current_suppliers"],
+                    "alternatives_found": len(info["alternative_suppliers"]),
+                    "recommendation": generate_product_recommendation_summary(info), # Используем уже существующую функцию
+                    "alternative_suppliers": info["alternative_suppliers"]
+                }
+            all_disciplines_results[discipline] = formatted_for_discipline
+        return all_disciplines_results
+
+
+    def _find_alternative_suppliers_logical(
+        self, current_project_data: pd.DataFrame, discipline: str, target_supplier: str = None
+    ) -> Dict[str, Any]:
+        """
+        Логический поиск альтернативных поставщиков на основе всех контрактов организации
+        (Теперь это приватный метод класса, использующий self.all_contracts_data).
+        """
+        print(f"🔍 ПОИСК АЛЬТЕРНАТИВ для дисциплины: {discipline}")
+        print("=" * 60)
+
+        alternatives_by_product = {}
+
+        current_products = current_project_data["product_name"].unique()
+
+        for product in current_products:
+            print(f"\n📦 Анализ продукта: {product}")
+
+            # Используем 'counterparty_name'
+            current_suppliers = {target_supplier} if target_supplier else set(
+                current_project_data[current_project_data["product_name"] == product][
+                    "counterparty_name"
+                ].unique()
+            )
+            print(f"  Текущий поставщик для анализа: {target_supplier}")
+
+            all_product_suppliers = self._find_all_suppliers_for_product(
+                product, discipline
+            )
+            # Ищем альтернативы среди всех поставщиков, исключая target_supplier
+            alternative_suppliers = set(all_product_suppliers.keys()) - current_suppliers
+
+            print(
+                f"   Найдено альтернативных поставщиков: {len(alternative_suppliers)}"
+            )
+
+            if alternative_suppliers:
+                alternatives_by_product[product] = {
+                    "current_suppliers": list(current_suppliers),
+                    "alternative_suppliers": self._analyze_alternative_suppliers(
+                        alternative_suppliers,
+                        all_product_suppliers,
+                        current_project_data,
+                        product,
+                    ),
+                    "market_analysis": analyze_market_position(
+                        current_suppliers, alternative_suppliers, all_product_suppliers
+                    ),
+                }
+
+                top_alternatives = sorted(
+                    alternatives_by_product[product]["alternative_suppliers"],
+                    key=lambda x: x["recommendation_score"],
+                    reverse=True,
+                )[:3]
+
+                print(f"   🏆 Топ-3 альтернативы:")
+                for i, alt in enumerate(top_alternatives, 1):
+                    print(
+                        f"      {i}. {alt['supplier_name']} (рейтинг: {alt['recommendation_score']:.2f})"
+                    )
+                    print(
+                        f"         Опыт: {alt['contracts_count']} контрактов, средняя цена: {alt['avg_price']:.2f})"
+                    )
+            else:
+                print(f"   ⚠️  Альтернативные поставщики не найдены")
+                alternatives_by_product[product] = {
+                    "current_suppliers": list(current_suppliers),
+                    "alternative_suppliers": [],
+                    "market_analysis": {
+                        "message": "Монопольная ситуация или недостаток данных"
+                    },
+                }
+
+        return alternatives_by_product
+
+    def _find_all_suppliers_for_product(self, product_name: str, discipline: str):
+        """
+        Находит всех поставщиков конкретного товара во всех контрактах
+        (Теперь это приватный метод класса, использующий self.all_contracts_data)
+        """
+        product_contracts = self.all_contracts_data[
+            (self.all_contracts_data["product_name"] == product_name)
+        ] # Удалена дублирующаяся часть OR условия
+
+        if "discipline" in product_contracts.columns:
+            product_contracts = product_contracts[
+                product_contracts["discipline"] == discipline
+            ]
+
+        suppliers_info = {}
+        # Используем 'supplier_name'
+        for supplier in product_contracts["counterparty_name"].unique():
+            supplier_contracts = product_contracts[
+                product_contracts["counterparty_name"] == supplier # заменим supplier_contracts на product_contracts
+            ]
+            suppliers_info[supplier] = {
+                "contracts_count": len(supplier_contracts),
+                "total_value": (
+                    supplier_contracts["total_contract_amount"].sum()
+                    if "total_contract_amount" in supplier_contracts.columns
+                    else 0
+                ),
+                "avg_price": (
+                    supplier_contracts["unit_price"].mean()
+                    if "unit_price" in supplier_contracts.columns
+                    else 0
+                ),
+                "price_std": (
+                    supplier_contracts["unit_price"].std()
+                    if "unit_price" in supplier_contracts.columns
+                    else 0
+                ),
+                "first_contract": (
+                    supplier_contracts["contract_signing_date"].min()
+                    if "contract_signing_date" in supplier_contracts.columns
+                    else None
+                ),
+                "last_contract": (
+                    supplier_contracts["contract_signing_date"].max()
+                    if "contract_signing_date" in supplier_contracts.columns
+                    else None
+                ),
+                "years_experience": calculate_years_experience(supplier_contracts),
+                "projects_count": (
+                    supplier_contracts["project"].nunique()
+                    if "project" in supplier_contracts.columns
+                    else 1
+                ),
+            }
+        return suppliers_info
+
+    def _analyze_alternative_suppliers(
+        self,
+        alternative_suppliers: set,
+        all_suppliers_info: Dict[str, Any],
+        current_data: pd.DataFrame,
+        product: str,
+    ):
+        """
+        Анализирует альтернативных поставщиков и ранжирует их по привлекательности.
+        (Теперь это приватный метод класса)
+        """
+        current_product_data = current_data[current_data["product_name"] == product]
+        current_avg_price = (
+            current_product_data["unit_price_eur"].mean() # Изменено с 'price' на 'unit_price_eur'
+            if "unit_price_eur" in current_product_data.columns
+            else 0
+        )
+
+        analyzed_alternatives = []
+        for supplier in alternative_suppliers:
+            supplier_info = all_suppliers_info[supplier]
+            recommendation_score = calculate_recommendation_score(
+                supplier_info, current_avg_price
+            )
+            advantages = identify_supplier_advantages(supplier_info, current_avg_price)
+            risks = assess_supplier_risks(supplier_info)
+            analyzed_alternatives.append(
+                {
+                    "supplier_name": supplier,
+                    "recommendation_score": recommendation_score,
+                    "contracts_count": supplier_info["contracts_count"],
+                    "avg_price": supplier_info["avg_price"],
+                    "price_vs_current": (
+                        (
+                            (supplier_info["avg_price"] - current_avg_price)
+                            / current_avg_price
+                            * 100
+                        )
+                        if current_avg_price > 0
+                        else 0
+                    ),
+                    "years_experience": supplier_info["years_experience"],
+                    "projects_count": supplier_info["projects_count"],
+                    "advantages": advantages,
+                    "risks": risks,
+                    "recommendation": generate_supplier_recommendation(
+                        supplier_info, current_avg_price
+                    ),
+                }
+            )
+        return analyzed_alternatives
+    
+def export_alternative_suppliers_to_excel(results: Dict[str, Any], file_path: str):
+    """
+    Экспортирует результаты анализы альтернативных поставщиков в Excel-файл.
+    Каждая дисциплина на отдельном листе.
+    """
+    try:
+        with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+            for discipline, products_data in results.items():
+                # Создаем DataFrame для текущей дисциплины
+                discipline_export_data = []
+                for product, info in products_data.items():
+                    # Текущие поставщики
+                    current_suppliers_str = ", ".join(info["current_suppliers"])
+
+                    # Альтернативные поставщики (детализированные)
+                    for alt in info["alternative_suppliers"]:
+                        discipline_export_data.append(
+                            {
+                                "Дисциплина": discipline,
+                                "Продукт": product,
+                                "Текущие поставщики": current_suppliers_str,
+                                "Кол-во альтернатив": info["alternatives_found"],
+                                "Рекомендация по продукту": info["recommendation"],
+                                "Альтернативный поставщик": alt["supplier_name"],
+                                "Рейтинг рекомендации": f"{alt['recommendation_score']:.2f}",
+                                "Кол-во контрактов (альт.)": alt["contracts_count"],
+                                "Ср. цена (альт., EUR)": f"{alt['avg_price']:.2f}",
+                                "Цена от текущей (%)": f"{alt['price_vs_current']:.2f}",
+                                "Опыт (лет, альт.)": f"{alt['years_experience']:.1f}",
+                                "Кол-во проектов (альт.)": alt["projects_count"],
+                                "Преимущества (альт.)": "; ".join(alt["advantages"]),
+                                "Риски (альт.)": "; ".join(alt["risks"]),
+                                "Рекомендация по поставщику": alt["recommendation"],
+                            }
+                        )
+
+                # Если нет альтернатив, но есть продукт, все равно добавим строку для текущих
+                if not info["alternative_suppliers"] and products_data:
+                    discipline_export_data.append(
+                        {
+                            "Дисциплина": discipline,
+                            "Продукт": product,
+                            "Текущие поставщики": current_suppliers_str,
+                            "Кол-во альтернатив": info["alternatives_found"],
+                            "Рекомендация по продукту": info["recommendation"],
+                            "Альтернативный поставщик": "Нет",
+                            "Рейтинг рекомендации": "-",
+                            "Кол-во контрактов (альт.)": "-",
+                            "Ср. цена (альт., EUR)": "-",
+                            "Цена от текущей (%)": "-",
+                            "Опыт (лет, альт.)": "-",
+                            "Кол-во проектов (альт.)": "-",
+                            "Преимущества (альт.)": "-",
+                            "Риски (альт.)": "-",
+                            "Рекомендация по поставщику": "-",
+                        }
+                    )
+
+                if discipline_export_data:
+                    df_discipline = pd.DataFrame(discipline_export_data)
+                    # Имя листа должно быть коротким и без запрещенных символов
+                    sheet_name = discipline[:31]  # Макс. 31 символ
+                    df_discipline.to_excel(writer, sheet_name=sheet_name, index=False)
+                else:
+                    print(f"Нет данных для экспорта по дисциплине: {discipline}")
+        print(
+            f"✅ Результаты анализа альтернативных поставщиков успешно экспортированы в: {file_path}"
+        )
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка при экспорте результатов анализа в Excel: {e}")
+        return False
