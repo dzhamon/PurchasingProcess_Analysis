@@ -40,7 +40,7 @@ class KPIVisualizer:
         """
         Тепловая карта для анализа KPI сотрудников по дисциплинам.
         """
-        output_dir = 'D:\Analysis-Results\heatmaps_by_discipline'
+        output_dir = r'D:\\Analysis-Results\\heatmaps_by_discipline'
         os.makedirs(output_dir, exist_ok=True)
         print('Мы в методе plot_heatmap')
         

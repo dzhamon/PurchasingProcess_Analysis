@@ -1,7 +1,12 @@
+import matplotlib
+
+matplotlib.use("Agg")  # Устанавливаем безопасный бэкенд
+
 import json
 import sys
-
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QPoint
+import os
+from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtCore import Qt, QPoint
 from PyQt5.QtGui import QFont, QCursor
 from PyQt5.QtWidgets import (
     QApplication,
@@ -20,13 +25,15 @@ from PyQt5.QtWidgets import QToolTip
 
 # Импорт AlternativeSuppliersAnalyzer
 from models_analyses.find_alternative_suppliers_enhanced import (
-    AlternativeSuppliersAnalyzer, export_alternative_suppliers_to_excel
+    AlternativeSuppliersAnalyzer,
+    export_alternative_suppliers_to_excel,
 )
 
 from selection_dialog import SelectionDialog
 from styles import set_light_theme, set_fonts, load_stylesheet
 from utils.clean_datas import clean_database
 from utils.data_model import DataModel
+from utils.functions import CurrencyConverter
 from utils.visualizer import KPIVisualizer
 from widgets.module_tab1 import Tab1Widget
 from widgets.module_tab2 import Tab2Widget
@@ -47,30 +54,9 @@ def clicked_connect(self):
     DataModel(self).open_file_dialog()
 
 
-class AnalysisThread(QThread):
-    update_progress = pyqtSignal(int)  # сигнал для обновления прогресса
-
-    def __init__(self, analysis_method, create_plot=False, *args, **kwargs):
-        super().__init__()
-        self.analysis_method = analysis_method
-        self.create_plot = create_plot
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        # Передаем сигнал update_progress в метод анализа
-        self.analysis_method(
-            update_progress=self.update_progress,
-            create_plot=self.create_plot,
-            *self.args,
-            **self.kwargs,
-        )
-
-
 class MyTabWidget(QWidget):
     def __init__(self):
         super().__init__()
-        # self.df_kpi_normalized = None
         self.notebook = QTabWidget()
         layout = QVBoxLayout(self)
         layout.addWidget(self.notebook)
@@ -171,7 +157,7 @@ class Window(QMainWindow):
         self._hhi_error_message = None
         self._hhi_success_message = None
         self._hhi_results = None
-        
+
         # Загрузка подсказок
         self.menu_hints = load_menu_hints()
 
@@ -180,7 +166,9 @@ class Window(QMainWindow):
         self.setCentralWidget(self.tab_widget)
 
         # Подключение сигнала для обновления данных между вкладками
-        tab1_widget = self.tab_widget.notebook.widget(0)  # Получаем первый виджет вкладки
+        tab1_widget = self.tab_widget.notebook.widget(
+            0
+        )  # Получаем первый виджет вкладки
         if isinstance(tab1_widget, Tab1Widget):
             tab1_widget.filtered_data_changed.connect(self.update_tab2_data)
 
@@ -193,11 +181,7 @@ class Window(QMainWindow):
 
         # Подключение сигнала для обновления данных между вкладками
         tab3_widget = self.tab_widget.notebook.widget(2)  # получаем Tab3Widget
-        # if isinstance(tab3_widget, Tab3Widget):
-        # 	tab3_widget.filtered_data_changed.connect(self.update_tab3_data())
         tab4_widget = self.tab_widget.notebook.widget(3)
-        # if isinstance(tab3_widget, Tab3Widget) and isinstance(tab4_widget, UniversalTabWidget):
-        # 	tab3_widget.filtered_data_changed.connect(tab4_widget.on_filtered_contracts_received)
         if isinstance(tab4_widget, Tab4Widget):
             tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 
@@ -237,6 +221,12 @@ class Window(QMainWindow):
         self.status_bar.addPermanentWidget(self.progress_bar)
         self.setStatusBar(self.status_bar)
 
+    # УДАЛЕНЫ ВСЕ МЕТОДЫ ДЛЯ РАБОТЫ С ПОТОКАМИ:
+    # - start_analysis_thread
+    # - on_thread_finished
+    # - closeEvent с остановкой потоков
+    # - AnalysisThread класс полностью убран
+
     def update_tab2_data(self, filtered_df):
         self.tab_widget.notebook.widget(1).update_data(filtered_df)
 
@@ -258,7 +248,6 @@ class Window(QMainWindow):
         analysisMenu = menuBar.addMenu("Анализ данных по Лотам")
         analysisMenu.addAction(self.analyzeMonthlyExpensesAction)
         analysisMenu.addAction(self.analyzeTopSuppliersAction)
-        analysisMenu.addAction(self.analyzeClasterAction)
         analysisMenu.addAction(self.suppliersfriquencyAction)
         analysisMenu.addAction(self.networkanalyseAction)
         analysisMenu.addAction(self.analyzeKPIAction)
@@ -269,14 +258,14 @@ class Window(QMainWindow):
 
         # Меню Анализ по Контрактам
         analysisMenuContract = menuBar.addMenu("Анализ данных по Контрактам")
-        analysisMenuContract.addAction(self.analyzeNoneEquilSums)
+        analysisMenuContract.addAction(self.analyzeClasterAction)
         analysisMenuContract.addAction(self.trend_analyses_action)
         analysisMenuContract.addAction(self.prophet_arima_action)
         analysisMenuContract.addAction(self.contracts_less_dates_action)
         analysisMenuContract.addAction(self.herfind_hirshman_action)
         # Отдельный пункт для анализа альтернативных поставщиков
         analysisMenuContract.addAction(self.run_alternative_suppliers_action)
-        
+
         # Меню Анализ данных по Складам
         analysisMenuWarehouses = menuBar.addMenu("Анализ данных по Складам")
         analysisMenuWarehouses.addAction(self.warehouseStatistics)
@@ -295,8 +284,6 @@ class Window(QMainWindow):
     def _createActions(self):
         # Действия для меню Файл
         self.ContrAction = QAction("Загрузить данные из Отчетов", self)
-        # self.CleanDatas = QAction("Очистить данные в БД", self)
-        # self.GetBasData = QAction("Получить основные данные", self)
         self.ExitAction = QAction("Выход", self)
 
         self.statusBar().showMessage("Все ОК")
@@ -320,14 +307,6 @@ class Window(QMainWindow):
             y=20,
         )
 
-        self.analyzeClasterAction = QAction("Кластерный анализ", self)
-        self.setActionTooltip(
-            self.analyzeClasterAction,
-            "Анализ данных по Лотам",
-            "menu_item_3",
-            x=20,
-            y=20,
-        )
 
         self.suppliersfriquencyAction = QAction("Анализ частоты поставщиков", self)
         self.setActionTooltip(
@@ -393,13 +372,11 @@ class Window(QMainWindow):
             x=20,
             y=20,
         )
-        # ================================================
+
         # Действия для меню Анализ данных по Контрактам
-        self.analyzeNoneEquilSums = QAction(
-            "Поиск и анализ несоответствий в суммах Лотов и Контрактов", self
-        )
+        self.analyzeClasterAction = QAction("Кластерный анализ", self)
         self.setActionTooltip(
-            self.analyzeNoneEquilSums,
+            self.analyzeClasterAction,
             "Анализ данных по Контрактам",
             "menu_item_1",
             x=450,
@@ -442,7 +419,7 @@ class Window(QMainWindow):
             x=450,
             y=20,
         )
-        
+
         # Определение действия для запуска анализа альтернативных поставщиков
         self.run_alternative_suppliers_action = QAction(
             "Анализ альтернативных поставщиков", self
@@ -454,7 +431,6 @@ class Window(QMainWindow):
             x=450,
             y=20,
         )
-        # ===================================================
 
         # Действия для меню Анализ данных по Складам
         self.warehouseStatistics = QAction(
@@ -464,7 +440,6 @@ class Window(QMainWindow):
     def _connectActions(self):
         # Подключение сигналов к действиям
         self.ContrAction.triggered.connect(self.load_sql_data)
-        # self.CleanDatas.triggered.connect(self.run_clean_data)
         self.ExitAction.triggered.connect(self.close)
 
         # Подключение сигналов к методам Анализа данных по Лотам
@@ -472,7 +447,6 @@ class Window(QMainWindow):
             self.run_analyze_monthly_cost
         )
         self.analyzeTopSuppliersAction.triggered.connect(self.run_analyze_top_suppliers)
-        self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
         self.suppliersfriquencyAction.triggered.connect(
             self.run_analyze_supplier_friquency
         )
@@ -488,7 +462,7 @@ class Window(QMainWindow):
         self.lotcount_peryearAction.triggered.connect(self.run_lotcount_peryear)
 
         # Подключение сигналов к методам Анализа данных по Контрактам
-        self.analyzeNoneEquilSums.triggered.connect(self.run_analyzeNonEquilSums)
+        self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
         self.trend_analyses_action.triggered.connect(self.run_trend_analyses)
         self.prophet_arima_action.triggered.connect(self.run_prophet_and_arima)
         self.contracts_less_dates_action.triggered.connect(
@@ -517,35 +491,15 @@ class Window(QMainWindow):
     def run_clean_data(self):
         clean_database()
 
-    def start_analysis(self, analysis_task, on_finished_callback, create_plot=False, *args, **kwargs):
-        """
-        Унифицированный метод для запуска анализа в отдельном потоке
-        :param analysis_task: Метод, который будет выполнять анализ.
-        :param on_finished_callback: Метод, который будет вызван после завершения анализа.
-        :param create_plot: флаг для создания графика (передается в AnalysisThread
-        :param args: Позиционные аргументы для analysis_task
-        :param kwargs: Именованные аргументы для analysis_task
-        """
-        # Сброс прогресс-бара
-        self.progress_bar.setValue(0)
-        self.progress_bar.show()  # Показываем прогресс-бар
+    # УБРАН СЛОЖНЫЙ start_analysis МЕТОД - ВСЕ АНАЛИЗЫ ТЕПЕРЬ СИНХРОННЫЕ
+    def show_progress(self, value):
+        """Простое обновление прогресс-бара для синхронных операций"""
+        self.progress_bar.setValue(value)
+        QApplication.processEvents()  # Обновляем интерфейс
 
-        # Создание и настройка потока с передачей всех аргументов
-        self.analysis_thread = AnalysisThread(
-            analysis_task, create_plot, *args, **kwargs)
-        self.analysis_thread.update_progress.connect(
-            self.progress_bar.setValue)  # Обновление прогресс-бара
-        self.analysis_thread.finished.connect(
-            on_finished_callback)  # Уведомление о завершении
-
-        # Запуск потока
-        self.analysis_thread.start()
-
-    def on_analysis_finished(self):
-        # Эта функция будет вызвана по завершении анализа
-        self.progress_bar.setValue(100)
-        self.progress_bar.hide()  # Скрываем прогресс-бар
-        QMessageBox.information(self, "Завершено", "Анализ завершен!")
+    def hide_progress(self):
+        """Скрытие прогресс-бара после завершения операции"""
+        self.progress_bar.hide()
 
     def run_kpi_analysis(self):
         """Запуск анализа KPI с использованием отфильтрованных данных."""
@@ -598,19 +552,29 @@ class Window(QMainWindow):
     def run_analyze_monthly_cost(self):
         # метод для анализа месячных затрат
         if self._current_filtered_df is not None:
+            self.progress_bar.show()
+            self.show_progress(10)
+
             print("Данные для анализа (месячные затраты):")
             # Используем минимальную и максимальную даты из отфильтрованных данных
             start_date = self._current_filtered_df["close_date"].min()
             end_date = self._current_filtered_df["close_date"].max()
+
+            self.show_progress(30)
             from models_analyses.analysis import analyze_monthly_cost
 
             analyze_monthly_cost(self, self._current_filtered_df, start_date, end_date)
+            self.show_progress(100)
+            self.hide_progress()
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
     def run_analyze_top_suppliers(self):
         #  метод анализа поставщиков с высокими и низкими ценами за единицу товара
         if self._current_filtered_df is not None:
+            self.progress_bar.show()
+            self.show_progress(10)
+
             """Используем минимальную и максимальную даты из отфильтрованных данных"""
             start_date = self._current_filtered_df["close_date"].min()
             end_date = self._current_filtered_df["close_date"].max()
@@ -625,73 +589,74 @@ class Window(QMainWindow):
                     f"Ожидалось одно уникальное значение project_name, но найдено: {uniq_project_name}"
                 )
 
+            self.show_progress(30)
             from models_analyses.analysis import analyze_top_suppliers
 
             # здесь логика для анализа данных
             analyze_top_suppliers(
                 self, self._current_filtered_df, start_date, end_date, project_name
             )
+            self.show_progress(100)
+            self.hide_progress()
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
     def run_ClusterAnalyze(self):
-        # Метод для классификации исполнителей с обучением методом SeedKMeans
+        # Метод для классификации поставщиков с обучением методом SeedKMeans
+        from models_analyses.clusterAnalysis_suppliers import run_supplier_clustering
+        
         if self._current_filtered_df is not None:
-            from models_analyses.MyLotAnalyzeKPI import LotAnalyzeKPI
-            from models_analyses.SeedKMeans_clustering import (
-                SeedKMeansClustering,
-                export_to_excel,
-            )
-            from models_analyses.SeedKMeans_clustering import analysis_df_clusters
-            import logging
-            import os
+            self.progress_bar.show()
+            self.show_progress(10)
 
-            output_dir = "D:\Analysis-Results\clussification_analysis"
+            output_dir = r"D:\Analysis-Results\suppliers_cluster_analysis"
             os.makedirs(output_dir, exist_ok=True)
 
-            # Создаем объект KPI-анализатора
-            kpi_analyzer = LotAnalyzeKPI(self._current_filtered_df)
+            self.show_progress(30)
+            
+            # Конвертируем цены за единицу и суммы контрактов в единую валюту EUR
+            converter = CurrencyConverter()
+            columns_info = [
+                ("total_contract_amount", "contract_currency", "total_contract_amount_eur"),
+                ("unit_price", "contract_currency", "unit_price_eur"),
+            ]
+            contracts_data = converter.convert_multiple_columns(self._current_filtered_df, columns_info)
+            
+            supplier_clusters, analyzer = run_supplier_clustering(contracts_data)
 
-            # Создаем объект для кластеризации, передавая KPI-анализатор
-            clustering_module = SeedKMeansClustering(kpi_analyzer)
-            df_clusters, kmeans_model = clustering_module.perform_clustering()
-
-            if df_clusters is not None:
-                # Сохранение гистограммы
-                histogram_path = os.path.join(output_dir, "cluster_distribution.png")
-                clustering_module.plot_cluster_distribution(df_clusters, histogram_path)
-
-                # Сохранение данных в Excel
-                excel_path = os.path.join(output_dir, "cluster_analysis_report.xlsx")
-                export_to_excel(df_clusters, excel_path)
-                analysis_df_clusters(df_clusters)
-
-                logging.info(
-                    f"Кластерный анализ завершен. Результаты сохранены в {output_dir}"
-                )
-            else:
-                logging.error("Кластерный анализ завершился ошибкой.")
-        else:
-            print("Нет данных для анализа")
 
     def run_analyze_supplier_friquency(self):
         # Метод для анализа частоты выбора поставщиков
         if self._current_filtered_df is not None:
+            self.progress_bar.show()
+            self.show_progress(10)
+
             from models_analyses.analysis import analyze_supplier_frequency
 
             analyze_supplier_frequency(self._current_filtered_df)
-            self.on_analysis_finished()
+            self.show_progress(100)
+            self.hide_progress()
+
+            QMessageBox.information(
+                self, "Завершено", "Анализ частоты поставщиков завершен!"
+            )
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
     def run_network_analysis(self):
         # Метод для сетевого анализа
         if self._current_filtered_df is not None:
+            self.progress_bar.show()
+            self.show_progress(10)
+
             print("Запуск сетевого анализа")
             from models_analyses.analysis import network_analysis
 
             network_analysis(self, self._current_filtered_df)
-            self.on_analysis_finished()
+            self.show_progress(100)
+            self.hide_progress()
+
+            QMessageBox.information(self, "Завершено", "Сетевой анализ завершен!")
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
@@ -703,26 +668,41 @@ class Window(QMainWindow):
 
     def run_analyzeNonEquilSums(self):
         # Метод для поиска несоответствий в суммах Лотов и Контрактов
+        self.progress_bar.show()
+        self.show_progress(10)
+
         print("Запуск поиска несоответствий сумм")
         from models_analyses.analyze_contracts import analyzeNonEquilSums
 
         analyzeNonEquilSums(self, self._current_filtered_df)
-        self.on_analysis_finished()
+        self.show_progress(100)
+        self.hide_progress()
+
+        QMessageBox.information(self, "Завершено", "Анализ несоответствий завершен!")
 
     def run_trend_analyses(self):
         if not hasattr(self, "_current_filtered_df") or self._current_filtered_df.empty:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа!")
             return
         else:
+            self.progress_bar.show()
+            self.show_progress(10)
+
             from models_analyses.analyze_contracts import (
                 data_preprocessing_and_analysis,
             )
 
             # Удалим в датафрейме self._current_filtered_df строки-дубликаты если они есть
             self._current_filtered_df = self._current_filtered_df.drop_duplicates()
+            self.show_progress(30)
+
             df_merged = data_preprocessing_and_analysis(self._current_filtered_df)
+            self.show_progress(70)
 
             dialog = SelectionDialog(df_merged=df_merged, parent=self)
+            self.show_progress(100)
+            self.hide_progress()
+
             dialog.exec_()
 
     # построение множественной регресии и корреляционный анализ
@@ -732,27 +712,42 @@ class Window(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа!")
             return
         else:
+            self.progress_bar.show()
+            self.show_progress(10)
+
             from models_analyses.regression_analyses import (
                 regression_analysis_month_by_month,
             )
 
             # в метод регрессионного анализа отправляем отфильтрованный _current_filtered_df
-            regression_analysis_month_by_month(
-                self._current_filtered_df
-            )  # --------- contract_df подгрузить-------------
+            regression_analysis_month_by_month(self._current_filtered_df)
+            self.show_progress(100)
+            self.hide_progress()
 
     # анализ контрактов без соответствующих лотов
     def run_contracts_less_dates(self):
+        self.progress_bar.show()
+        self.show_progress(10)
+
         from models_analyses.contracts_without_lots import check_contracts_less_dates
 
         # метод поиска контрактов без лотов
-        check_contracts_less_dates(self.contract_df) # необходимо убедиться в наличии данных
+        check_contracts_less_dates(
+            self.contract_df
+        )  # необходимо убедиться в наличии данных
+        self.show_progress(100)
+        self.hide_progress()
 
     def run_efficiency_analyses(self):
+        self.progress_bar.show()
+        self.show_progress(10)
+
         from models_analyses.efficiency_analyses import main_method
 
         main_method(self.filtered_df, self.data_df)
         # Использует self.filtered_df и self.data_df, убедиться, что они заполнены
+        self.show_progress(100)
+        self.hide_progress()
 
     def run_analyze_by_unit_price(self):
         """
@@ -762,34 +757,24 @@ class Window(QMainWindow):
             self._current_filtered_df is not None
             and not self._current_filtered_df.empty
         ):
-            self.start_analysis(
-                analysis_task=self._analyze_by_unit_price_task,
-                on_finished_callback=self.on_analysis_finished,  # Передаем ссылку на метод, а не результат его вызова
-                create_plot=False,  # Или True, если нужно
-                current_project_data=self._current_filtered_df,  # Передаем данные как kwargs
+            self.progress_bar.show()
+            self.show_progress(10)
+
+            from models_analyses.efficiency_analyses import (
+                analyze_suppliers_by_unit_price,
+            )
+
+            analyze_suppliers_by_unit_price(
+                self, self._current_filtered_df, lambda x: self.show_progress(x), False
+            )
+            self.show_progress(100)
+            self.hide_progress()
+
+            QMessageBox.information(
+                self, "Завершено", "Анализ по цене за единицу завершен!"
             )
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
-
-    def handle_plot(self, title, figure):
-        """Слот для отображения графика в главном потоке"""
-        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
-
-        canvas = FigureCanvasQTAgg(figure)
-        self.setCentralWidget(canvas)
-        self.show()
-
-    def _analyze_by_unit_price_task(self, update_progress, create_plot, **kwargs):
-        # Получаем данные из kwargs, переданных через AnalysisThread
-        current_project_data = kwargs.get("current_project_data")
-        from models_analyses.efficiency_analyses import analyze_suppliers_by_unit_price
-
-        update_progress.emit(10)
-        # Убедиться, что analyze_suppliers_by_unit_price принимает df, update_progress и create_plot
-        analyze_suppliers_by_unit_price(
-            self, current_project_data, update_progress, create_plot
-        ) # self.filtered_df
-        update_progress.emit(100)
 
     def run_find_cross_discipline_lots(self):
         """
@@ -798,20 +783,26 @@ class Window(QMainWindow):
         if self._current_filtered_df is None or self._current_filtered_df.empty:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
             return
-        
+
+        self.progress_bar.show()
+        self.show_progress(10)
+
         # Шаг 1. Находим общих поставщиков для дисциплин
         from models_analyses.analysis import find_common_suppliers_between_disciplines
 
         common_suppliers_df = find_common_suppliers_between_disciplines(
             self.filtered_df
-        ) # при ошибке используем self._current_filtered_df
+        )  # при ошибке используем self._current_filtered_df
+        self.show_progress(40)
+
         if not common_suppliers_df.empty:
             from models_analyses.analysis import compare_materials_and_prices
 
             # Шаг 2. Сравниваем цены за единицу продукции
             comparison_results = compare_materials_and_prices(
                 self.filtered_df, common_suppliers_df
-            ) # при ошибке используем self._current_filtered_df
+            )  # при ошибке используем self._current_filtered_df
+            self.show_progress(70)
 
             if not comparison_results.empty:
                 # Шаг 3. Визуализация
@@ -822,196 +813,118 @@ class Window(QMainWindow):
 
                 visualize_price_differences(comparison_results)
                 heatmap_common_suppliers(common_suppliers_df)
+                self.show_progress(90)
 
                 # Шаг 4. Статистика
                 from models_analyses.analysis import matches_results_stat
 
                 matches_results_stat(comparison_results)
+                self.show_progress(100)
+                self.hide_progress()
+
                 QMessageBox.information(
                     self,
                     "Кросс-дисциплинарный анализ",
                     "Кросс-дисциплинарный анализ завершен.",
                 )
             else:
+                self.hide_progress()
                 QMessageBox.information(
                     self,
                     "Кросс-дисциплинарный анализ",
                     "Нет данных для сравнения материалов и цен.",
                 )
         else:
+            self.hide_progress()
             QMessageBox.information(
                 self,
                 "Кросс-дисциплинарный анализ",
                 "Общие поставщики между дисциплинами не найдены.",
             )
+
     def run_lotcount_peryear(self):
-        # self.progress_bar.setValue(0)  # сброс прогресс-бара
-        # self.analysis_thread = AnalysisThread(self._lotcount_peryear_task)
-        # self.analysis_thread.update_progress.connect(
-        #     self.progress_bar.setValue
-        # )  # Обновляем прогресс-бар
-        # self.analysis_thread.finished.connect(
-        #     self.on_analysis_finished
-        # )  # Уведомление о завершении
-        # self.analysis_thread.start()
-        """Запускает подсчет и визуализацию лотов по годам в отдельном потоке."""
-        
+        """Запускает подсчет и визуализацию лотов по годам."""
+
         if self._current_filtered_df is None or self._current_filtered_df.empty:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
             return
-        
-        # Исправленный вызов start_analysis
-        self.start_analysis(
-            analysis_task=self._lotcount_peryear_task,
-            on_finished_callback=self.on_analysis_finished,
-            create_plot=False,  # Или True, если нужно
-            current_project_data=self._current_filtered_df,  # Передаем данные как kwargs
-        )
 
-    # def _lotcount_peryear_task(self):
-    #     # метод посчета и визуализации количества лотов по дисциплинам по-квартально за год по проекту
-    #     from widgets.analysis import lotcount_peryear
-    #
-    #     lotcount_peryear(self.filtered_df)
-    #     self.analysis_thread.update_progress.emit(100)
-    def _lotcount_peryear_task(self, update_progress, create_plot, **kwargs):
-        # Получаем данные из kwargs
-        current_project_data = kwargs.get("current_project_data")
+        self.progress_bar.show()
+        self.show_progress(10)
 
         from widgets.analysis import lotcount_peryear
 
-        update_progress.emit(10)
-        lotcount_peryear(current_project_data)  # Используем данные из kwargs
-        update_progress.emit(100)
-    
+        lotcount_peryear(self._current_filtered_df)
+        self.show_progress(100)
+        self.hide_progress()
+
+        QMessageBox.information(self, "Завершено", "Анализ количества лотов завершен!")
+
     def run_herfind_hirshman_analysis(self):
-        """ Запускает анализ Херфиндаля-Хиршмана в отдельном потоке """
+        """Запускает анализ Херфиндаля-Хиршмана"""
         if self._current_filtered_df is None or self._current_filtered_df.empty:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа HHI.")
             return
-        
+
+        self.progress_bar.show()
+        self.show_progress(10)
+
         print("Запуск анализа HHI...")
         print(f"Размер данных: {self._current_filtered_df.shape}")
 
-        # Запускаем _herfind_hirshman_analysis_task через унифицированный метод start_analysis
-        self.start_analysis(
-            analysis_task=self._herfind_hirshman_analysis_task,
-            on_finished_callback=self.on_analysis_finished,  # Общая функция завершения
-            create_plot=False,  # Если HHI не строит графиков через этот флаг
-            current_project_data=self._current_filtered_df,  # Передаем данные для анализа
-        )
-        
-    def _herfind_hirshman_analysis_task(
-            self, update_progress, create_plot=False, **kwargs):
-        """Задача для расчета индекса Герфиндаля-Хиршмана (выполняется в отдельном потоке)."""
-        update_progress.emit(10)
-        current_project_data = kwargs.get("current_project_data")
-        
-        # создаем переменные для передачи в основной поток
-        self._hhi_error_message = None
-        self._hhi_success_message = None
-        self._hhi_results = None
-        
-        if current_project_data is None or current_project_data.empty:
-            self._hhi_error_message = "Данные для HHI анализа не предоставлены."
-            update_progress.emit(100)
-            return
-        
         try:
-            print(f"HHI анализ: Размер данных {current_project_data.shape}")
-            print(f"Столбцы в данных: {list(current_project_data.columns)}")
-            
+            print(f"HHI анализ: Размер данных {self._current_filtered_df.shape}")
+            print(f"Столбцы в данных: {list(self._current_filtered_df.columns)}")
+
             # Импортируем функции
             from widgets.analysisWidget import calculate_herfind_hirshman
             from utils.vizualization_tools import save_herfind_hirshman_results
-            # from utils.functions import load_contracts
-            
-            update_progress.emit(30)
-            
+
+            self.show_progress(30)
+
             # Выполняем расчет HHI
-            returned_df, supplier_stats, hhi = calculate_herfind_hirshman(current_project_data)
-            update_progress.emit(70)
-            
+            returned_df, supplier_stats, hhi = calculate_herfind_hirshman(
+                self._current_filtered_df
+            )
+            self.show_progress(70)
+
             # Сохраняем результаты
             success = save_herfind_hirshman_results(supplier_stats, hhi)
-            self._hhi_results = (returned_df, supplier_stats, hhi, success)
-            
+            self.show_progress(100)
+
             if success:
-                self._hhi_success_message = "Анализ HHI завершен успешно. Результаты сохранены в папку Analysis-Results."
+                self.hide_progress()
+                QMessageBox.information(
+                    self,
+                    "Анализ Герфиндаля-Хиршмана",
+                    "Анализ HHI завершен успешно. Результаты сохранены в папку Analysis-Results.",
+                )
             else:
-                self._hhi_error_message = "Анализ выполнен, но возникли проблемы при сохранении результатов."
-        
+                self.hide_progress()
+                QMessageBox.warning(
+                    self,
+                    "Предупреждение",
+                    "Анализ выполнен, но возникли проблемы при сохранении результатов.",
+                )
+
         except ImportError as e:
             error_msg = f"Ошибка импорта: {e}. Проверьте наличие модуля analysisWidget."
-            print(f"Ошибка в _herfind_hirshman_analysis_task: {error_msg}")
-            self._hhi_error_message = error_msg
+            print(f"Ошибка в run_herfind_hirshman_analysis: {error_msg}")
+            self.hide_progress()
+            QMessageBox.critical(self, "Ошибка HHI", error_msg)
         except Exception as e:
             error_msg = f"Произошла ошибка при анализе Герфиндаля-Хиршмана: {e}"
-            print(f"Ошибка в _herfind_hirshman_analysis_task: {e}")
-            self._hhi_error_message = error_msg
-        finally:
-            update_progress.emit(100)
-            
-    def on_hhi_analysis_finished(self):
-        """Обработчик завершения анализа HHI - вызывается в основном потоке"""
+            print(f"Ошибка в run_herfind_hirshman_analysis: {e}")
+            self.hide_progress()
+            QMessageBox.critical(self, "Ошибка HHI", error_msg)
 
-        if hasattr(self, "_hhi_error_message") and self._hhi_error_message:
-            QMessageBox.critical(self, "Ошибка HHI", self._hhi_error_message)
-            self._hhi_error_message = None
-        elif hasattr(self, "_hhi_success_message") and self._hhi_success_message:
-            QMessageBox.information(
-                self, "Анализ Герфиндаля-Хиршмана", self._hhi_success_message
-            )
-            self._hhi_success_message = None
-
-        # Очищаем результаты
-        if hasattr(self, "_hhi_results"):
-            self._hhi_results = None
-
-    # запуск унифицированного анализа альтернативных поставщиков
-
-    # def run_alternative_suppliers_analysis(self):
-    #     """
-    #     Запускает анализ альтернативных поставщиков
-    #     Использует _current_filtered_df как current_project_data
-    #     и данные, полученные от Tab3Widget, как all_contracts_data.
-    #     """
-    #     if self.alternative_suppliers_analyzer.all_contracts_data is None:
-    #         QMessageBox.warning(
-    #             self,
-    #             "Ошибка",
-    #             "Полные данные контрактов не загружены. Пожалуйста, загрузите их через 'Данные по Контрактам'.",
-    #         )
-    #         return
-    #
-    #     if self._current_filtered_df is None or self._current_filtered_df.empty:
-    #         QMessageBox.warning(
-    #             self,
-    #             "Ошибка",
-    #             "Нет отфильтрованных данных (из лотов/контрактов) для текущего анализа. Пожалуйста, отфильтруйте данные на вкладках 'Параметры загруженных Лотов' или 'Параметры загруженных Контрактов'.",
-    #         )
-    #         return
-    #
-    #     print(f"Запуск анализа альтернативных поставщиков.")
-    #
-    #     # Запускаем _alternative_suppliers_analysis_task через унифицированный метод start_analysis
-    #     # Передаем None в target_disciplines, чтобы Analyzer сам проанализировал все дисциплины
-    #     self.start_analysis(
-    #         analysis_task=self._alternative_suppliers_analysis_task,
-    #         on_finished_callback=self._on_alternative_suppliers_analysis_finished,
-    #         create_plot=False,  # Если этот анализ не строит графиков через этот флаг
-    #         current_project_data=self._current_filtered_df,  # Отфильтрованные данные
-    #         target_disciplines=None,  # Указываем анализатору обработать все дисциплины
-    #     )
-        
-        # ============== изменения/дополнения - вызов записанного файла all_major_suppliers
-        
     def run_alternative_suppliers_for_major_suppliers(self):
         """
         Читает файл all_major_suppliers.xlsx и запускает анализ альтернатив
         для каждого указанного там поставщика.
         """
         import pandas as pd
+
         if self.alternative_suppliers_analyzer.all_contracts_data is None:
             QMessageBox.warning(
                 self,
@@ -1019,16 +932,18 @@ class Window(QMainWindow):
                 "Полные данные контрактов не загружены. Пожалуйста, загрузите их через 'Данные по Контрактам'.",
             )
             return
+
         try:
-            file_path = r'D:\Analysis-Results\hirshman_results\all_major_suppliers.xlsx'
+            file_path = r"D:\Analysis-Results\hirshman_results\all_major_suppliers.xlsx"
             major_suppliers_df = pd.read_excel(file_path)
         except FileNotFoundError:
-            QMessageBox.warning(self,
-                                "Ошибка",
-                                "Файл 'all_major_suppliers.xlsx' не найден. Убедитесь, что он существует.",
-                                )
+            QMessageBox.warning(
+                self,
+                "Ошибка",
+                "Файл 'all_major_suppliers.xlsx' не найден. Убедитесь, что он существует.",
+            )
             return
-        
+
         if major_suppliers_df.empty:
             QMessageBox.information(
                 self,
@@ -1036,141 +951,125 @@ class Window(QMainWindow):
                 "Файл 'all_major_suppliers.xlsx' пуст. Не для кого искать альтернативы.",
             )
             return
-        
+
+        self.progress_bar.show()
+        self.show_progress(10)
+
         results_aggregator = {}
-        
-        for _, row in major_suppliers_df.iterrows():
-            discipline = row.get('discipline')
-            major_supplier = row.get('counterparty_name')
-            
+        total_suppliers = len(major_suppliers_df)
+
+        for idx, row in major_suppliers_df.iterrows():
+            discipline = row.get("discipline")
+            major_supplier = row.get("counterparty_name")
+
             if not discipline or not major_supplier:
                 print("Предупреждение: Пропущена строка в файле")
                 continue
-            
+
+            # Обновляем прогресс
+            progress = 10 + int((idx / total_suppliers) * 80)
+            self.show_progress(progress)
+
             print(
                 f"Запуск анализа альтернатив для дисциплины: '{discipline}', поставщика: '{major_supplier}'"
             )
-            self.start_analysis(
-                analysis_task=self._alternative_suppliers_analysis_task,
-                on_finished_callback=self._on_alternative_suppliers_analysis_finished,
-                create_plot = False,
-                current_project_data = self._current_filtered_df,
-                target_disciplines = [discipline],
-                target_supplier = major_supplier  # Новый параметр!
+
+            # Запускаем анализ синхронно
+            converter = CurrencyConverter()
+            # Конвертируем и сохраняем нужный столбец
+            columns_info = [
+                ("total_contract_amount", "contract_currency", "total_contract_amount_eur"),
+                ("unit_price", "contract_currency", "unit_price_eur"),
+            ]
+            current_project_data = converter.convert_multiple_columns(self._current_filtered_df, columns_info)
+
+            # запускаем непосредственно анализ
+            results = self.alternative_suppliers_analyzer.run_analysis(
+                current_project_data,
+                target_disciplines=[discipline],
+                target_supplier=major_supplier,
+            )
+
+            if results:
+                results_aggregator.update(results)
+
+        self.show_progress(90)
+
+        # Обрабатываем результаты для отображения в QMessageBox
+        if results_aggregator:
+            # Подсчитываем статистику
+            total_disciplines = len(results_aggregator)
+            total_products = sum(len(products_data) for products_data in results_aggregator.values() if products_data)
+            total_alternatives = sum(
+                info.get("alternatives_found", 0)
+                for products_data in results_aggregator.values()
+                if products_data
+                for info in products_data.values()
+            )
+            products_with_alternatives = sum(
+                1 for products_data in results_aggregator.values()
+                if products_data
+                for info in products_data.values()
+                if info.get("alternatives_found", 0) > 0
+            )
+            
+            full_report_text = f"""Анализ альтернативных поставщиков завершен!
+
+            Результаты:
+            • Дисциплин: {total_disciplines}
+            • Продуктов: {total_products}
+            • Найдено альтернатив: {total_alternatives}
+            • Продуктов с альтернативами: {products_with_alternatives}
+    
+            Подробные результаты сохранены в Excel файл."""
+        
+        else:
+            full_report_text = "Анализ завершен, но результаты не получены."
+            
+            
+        # Экспорт в Excel
+        options = QFileDialog.Options()
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить результаты анализа альтернативных поставщиков",
+            "alternative_suppliers_analysis.xlsx",
+            "Excel Files (*.xlsx);;All Files (*)",
+            options=options,
+        )
+        if file_name:
+            export_success = export_alternative_suppliers_to_excel(
+                results_aggregator, file_name
             )
         
-        # ============== конец изменений/дополнений
-    
-    def _alternative_suppliers_analysis_task(
-     self, update_progress, create_plot=False, **kwargs
- ):
-     """Задача для анализа альтернативных поставщиков (выполняется в отдельном потоке)."""
-     update_progress.emit(10)
- 
-     current_project_data = kwargs.get("current_project_data")
-     target_disciplines = kwargs.get("target_disciplines")
-     target_supplier = kwargs.get("target_supplier")
- 
-     # Вызов метода анализатора
-     results = self.alternative_suppliers_analyzer.run_analysis(
-         current_project_data,
-         target_disciplines=target_disciplines,
-         target_supplier=target_supplier
-     )
-     update_progress.emit(80)
- 
-     # Здесь теперь обрабатываются результаты для отображения в QMessageBox
-     # и для экспорта.
- 
-     # --- Часть для отображения в QMessageBox (адаптируем, чтобы показывать по дисциплинам) ---
-     if results:
-         full_report_text = "<h3>Результаты анализа альтернативных поставщиков:</h3>"
-         for disc, products_data in results.items():
-             full_report_text += f"<h4>Дисциплина: {disc}</h4>"
-             if products_data:
-                 for product, info in products_data.items():
-                     full_report_text += f"<h5>Продукт: {product}</h5>"
-                     full_report_text += f"Текущие поставщики: {', '.join(info['current_suppliers'])}<br>"
-                     full_report_text += (
-                         f"Найдено альтернатив: {info['alternatives_found']}<br>"
-                     )
-                     full_report_text += f"Рекомендация: {info['recommendation']}<br>"
-                     full_report_text += "<b>Топ-альтернативы:</b><br>"
-                     if info["alternative_suppliers"]:
-                         # Показываем топ-3 для QMessageBox
-                         top_alternatives_for_display = sorted(
-                             info["alternative_suppliers"],
-                             key=lambda x: x["recommendation_score"],
-                             reverse=True,
-                         )[:3]
-                         for alt in top_alternatives_for_display:
-                             full_report_text += f"- {alt['supplier_name']} (Рейтинг: {alt['recommendation_score']:.2f}, Ср. цена: {alt['avg_price']:.2f})<br>"
-                     else:
-                         full_report_text += "  Нет доступных альтернатив.<br>"
-                     full_report_text += "<br>"
-             else:
-                 full_report_text += "  Нет данных по продуктам для этой дисциплины.<br>"
-             full_report_text += "<hr>"  # Разделитель между дисциплинами
-         QMessageBox.information(self, "Результаты Анализа", full_report_text)
-     else:
-         QMessageBox.information(
-             self,
-             "Результаты Анализа",
-             "Анализ не дал результатов или не удалось найти альтернативных поставщиков.",
-         )
- 
-     # --- Часть для экспорта в Excel ---
-     if results:
-         # Запрашиваем у пользователя путь для сохранения файла
-         options = QFileDialog.Options()
-         file_name, _ = QFileDialog.getSaveFileName(
-             self,
-             "Сохранить результаты анализа альтернативных поставщиков",
-             "alternative_suppliers_analysis.xlsx",
-             "Excel Files (*.xlsx);;All Files (*)",
-             options=options,
-         )
-         if file_name:
-             export_success = export_alternative_suppliers_to_excel(results, file_name)
-             if export_success:
-                 QMessageBox.information(
-                     self,
-                     "Экспорт завершен",
-                     "Данные успешно экспортированы в Excel.",
-                 )
-             else:
-                 QMessageBox.warning(
-                     self,
-                     "Ошибка экспорта",
-                     "Произошла ошибка при экспорте данных в Excel.",
-                 )
-     else:
-         print(
-             "Нет результатов для экспорта."
-         )  # Уже было сообщение об отсутствии результатов анализа
- 
-     update_progress.emit(100)
-    
-    
-    def _on_alternative_suppliers_analysis_finished(self):
-        # эта функция завершения анализа альтернативных поставщиков
-        QMessageBox.information(
-            self, "Завершено", "Анализ альтернативных поставщиков завершен!"
-        )
+            if export_success:
+                full_report_text += "\n\n✅ Данные успешно экспортированы в Excel."
+            else:
+                full_report_text += "\n\n❌ Ошибка при экспорте в Excel."
+        
+        self.show_progress(100)
+        self.hide_progress()
+        
+        QMessageBox.information(self, "Результаты анализа", full_report_text)
 
     # Расчет сумм остатков по складам по валютам поставок
     def run_warehouseStatistics(self):
+        self.progress_bar.show()
+        self.show_progress(10)
+
         print("Входим в метод Статистики по Складам")
         from utils.analyzeWarehouseStatistics import calculate_statistics
 
         calculate_statistics(self.filtered_df)
+        self.show_progress(100)
+        self.hide_progress()
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
 
     # Устанавливаем шрифты и тему
-    # set_dark_theme(app)
     set_fonts(app)
     # Загружаем стили из CSS-файла
     stylesheet = load_stylesheet("styles_black.qss")

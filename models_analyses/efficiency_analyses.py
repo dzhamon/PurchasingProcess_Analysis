@@ -347,19 +347,19 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 		create_plot (function): Функция для построения графиков.
 	"""
 	print("Запуск analyze_suppliers_by_unit_price")
-	update_progress.emit(0)
+	update_progress(0)
 	
 	# --- 1. Настройка пути и папки для результатов ---
 	output_folder = 'D:/Analysis-Results/suppliers_by_unit_price'
 	os.makedirs(output_folder, exist_ok=True)
-	update_progress.emit(10)
+	update_progress(10)
 	
 	# --- 2. Конвертация валют ---
 	if 'unit_price' in mydata_df.columns and 'currency' in mydata_df.columns:
 		columns_info = [('unit_price', 'currency', 'unit_price_eur')]
 		converter = CurrencyConverter()
 		mydata_df = converter.convert_multiple_columns(mydata_df, columns_info)
-	update_progress.emit(20)
+	update_progress(20)
 	
 	# --- 3. Нормализация данных c наименованиями товаров ---
 	mydata_df['good_name'] = mydata_df['good_name'].str.strip().str.lower()
@@ -378,7 +378,7 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 	if filtered_goods.empty:
 		QMessageBox.information(parent_widget, "Результат", "Нет товаров с несколькими поставщиками.")
 		return None
-	update_progress.emit(30)
+	update_progress(30)
 	
 	# --- 5. Пересчёт единиц измерения ---
 	def convert_units(row):
@@ -430,7 +430,7 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 	
 	mydata_df['unit_price_eur_std'] = mydata_df.apply(convert_units, axis=1)
 	mydata_df.dropna(subset=['unit_price_eur_std'], inplace=True)
-	update_progress.emit(40)
+	update_progress(40)
 	
 	# --- 6. Агрегация данных по поставщикам ---
 	result_tables = []
@@ -461,7 +461,7 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 		
 		supplier_stats['good_name'] = good_name
 		result_tables.append(supplier_stats)
-	update_progress.emit(60)
+	update_progress(60)
 	
 	# --- 7. Сохранение результатов ---
 	final_table = pd.concat(result_tables, ignore_index=True)
@@ -490,7 +490,7 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 					
 			# sheet_name = good_name[:30]  # Ограничение длины имени листа
 			# good_data.to_excel(writer, sheet_name=sheet_name, index=False)
-	update_progress.emit(80)
+	update_progress(80)
 	
 	# --- 8. Визуализация ---
 	for good_name in filtered_goods:
@@ -526,7 +526,7 @@ def analyze_suppliers_by_unit_price(parent_widget, mydata_df, update_progress, c
 		except Exception as e:
 			print(f"Ошибка при обработке товара {good_name}: {str(e)}")
 			continue  # Продолжаем цикл со следующим товаром
-	update_progress.emit(100)
+	update_progress(100)
 	
 	print(f"Анализ завершён. Результаты сохранены в: {excel_file}")
 	return final_table

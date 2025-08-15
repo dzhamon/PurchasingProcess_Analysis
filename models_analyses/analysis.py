@@ -37,12 +37,24 @@ def group_by_currency(df):
 
 
 def analyze_monthly_cost(parent_widget, df, start_date, end_date):
+	from matplotlib.ticker import FuncFormatter
+	from scipy import stats
+	import numpy as np
 	"""
 	Расширенный анализ месячных затрат с разбивкой по дисциплинам
 	"""
 	# Создаем папку для результатов
 	OUT_DIR = os.path.join(BASE_DIR, "monthly_cost_analysis")
 	os.makedirs(OUT_DIR, exist_ok=True)
+	
+	# Проверка наличия необходимых колонок
+	required_columns = ["close_date", "discipline", "total_price", "currency"]
+	missing_columns = [col for col in required_columns if col not in df.columns]
+	if missing_columns:
+	    QMessageBox.warning(
+	        parent_widget, "Ошибка", f"Отсутствуют колонки: {', '.join(missing_columns)}"
+	    )
+	    return
 	
 	# Конвертация и фильтрация данных
 	df['close_date'] = pd.to_datetime(df['close_date'], errors='coerce')
@@ -57,26 +69,52 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 	filtered_df['month_name'] = filtered_df['close_date'].dt.strftime('%Y-%m')
 	
 	# Конвертация в EUR
-	converter = CurrencyConverter()
-	columns_info = [('total_price', 'currency', 'total_price_eur')]
-	filtered_df = converter.convert_multiple_columns(
-		df=filtered_df, columns_info=columns_info)
+	try:
+		converter = CurrencyConverter()
+		columns_info = [('total_price', 'currency', 'total_price_eur'),
+		                ('unit_price', 'currency', 'unit_price_eur')]
+		filtered_df = converter.convert_multiple_columns(
+			df=filtered_df, columns_info=columns_info)
+	except Exception as e:
+		QMessageBox.warning(parent_widget, 'Ошибка конвертации', f"Ошибка при конвертации валют: {str(e)}")
+		return
+	# Константы
+	MIN_TRASHOLD_PERCENT = 2 #2% минимум для отображения
 	
 	# 1. Анализ по дисциплинам в EUR
-	discipline_analysis = filtered_df.groupby(['year_month', 'discipline'])['total_price_eur'].sum().unstack()
-	
-	# 2. Топ-5 дисциплин по затратам
+	discipline_analysis = filtered_df.groupby(['year_month', 'discipline'])['total_price_eur'].sum().unstack(fill_value=0)
 	discipline_totals = filtered_df.groupby('discipline')['total_price_eur'].sum()
-	top_disciplines = discipline_totals.nlargest(5)
-	other_disciplines_sum = discipline_totals.sum() - top_disciplines.sum()
+	total_sum = discipline_totals.sum()
+	
+	# показать отдельно только значимые дисциплины
+	significant_disciplines = discipline_totals[discipline_totals / total_sum * 100 >= MIN_TRASHOLD_PERCENT]
+	other_sum = discipline_totals.sum() - significant_disciplines.sum()
 	
 	# Создаем Series для круговой диаграммы (топ-5 + "Другие")
-	pie_data = top_disciplines.copy()
-	if other_disciplines_sum > 0:
-		pie_data['Другие'] = other_disciplines_sum
+	pie_data = significant_disciplines.copy()
+	if other_sum > 0:
+		pie_data['Другие'] = other_sum
 	
 	# 3. Общие затраты по месяцам в EUR
 	monthly_totals = filtered_df.groupby('year_month')['total_price_eur'].sum()
+	
+	# Статистические метрики
+	monthly_stats = {
+	    "Среднемесячные затраты": monthly_totals.mean(),
+	    "Медиана": monthly_totals.median(),
+	    "Стандартное отклонение": monthly_totals.std(),
+	    "Коэффициент вариации": monthly_totals.std() / monthly_totals.mean(),
+	    "Минимум": monthly_totals.min(),
+	    "Максимум": monthly_totals.max(),
+	}
+	# Функция форматирования валют
+	def format_currency(x, p):
+		if x >= 1e6:
+			return f'{x/1e6:.1f}M €'
+		elif x >= 1e3:
+			return f'{x/1e3:.0f}K €'
+		else:
+			return f'{x:.0f} €'
 	
 	# Визуализация
 	plt.figure(figsize=(18, 12))
@@ -84,17 +122,22 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 	# График 1: Общие затраты по месяцам (EUR)
 	plt.subplot(2, 2, 1)
 	monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca())
+	plt.gca().yaxis.set_major_formatter(FuncFormatter(format_currency))
 	plt.title('Общие месячные затраты (EUR)')
 	plt.ylabel('Сумма, EUR')
 	plt.xticks(rotation=45)
 	
-	# Добавляем подписи значений
-	for x, y in zip(range(len(monthly_totals)), monthly_totals):
-		plt.text(x, y, f'{y:,.0f}', ha='center', va='bottom')
+	# добавляем линию тренда
+	x_numeric = range(len(monthly_totals))
+	slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, monthly_totals.values)
+	trend_line = slope * np.array(x_numeric) + intercept
+	plt.plot(x_numeric, trend_line, "r--", alpha=0.7, label=f"Тренд (R²={r_value**2:.3f})")
+	plt.legend()
 	
 	# График 2: Топ-5 дисциплин по затратам (EUR)
 	plt.subplot(2, 2, 2)
-	discipline_analysis[top_disciplines.index].plot(kind='bar', stacked=True, ax=plt.gca())
+	discipline_analysis[significant_disciplines.index].plot(kind='bar', stacked=True, ax=plt.gca())
+	plt.gca().yaxis.set_major_formatter(FuncFormatter(format_currency))
 	plt.title('Топ-5 дисциплин по затратам (EUR)')
 	plt.ylabel('Сумма, EUR')
 	plt.xticks(rotation=45)
@@ -117,7 +160,7 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 	# График 4: Нормализованная динамика по дисциплинам
 	plt.subplot(2, 2, 4)
 	normalized = discipline_analysis.apply(lambda x: (x / x.max()) * 100)
-	for discipline in top_disciplines.index:
+	for discipline in significant_disciplines.index:
 		plt.plot(normalized.index.astype(str), normalized[discipline], marker='o', label=discipline)
 	plt.title('Нормализованная динамика (100% = максимум для дисциплины)')
 	plt.ylabel('Процент от максимального значения')
@@ -158,108 +201,6 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 		"Анализ завершен",
 		f"Анализ месячных затрат в EUR сохранен в:\n{OUT_DIR}"
 	)
-
-
-# def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name):
-# 	"""
-# 	   Анализирует топ-10 поставщиков и сохраняет результаты в папку, названную по имени проекта.
-#
-# 	   :param parent_widget: Родительский виджет для отображения сообщений.
-# 	   :param df: DataFrame с данными.
-# 	   :param start_date: Начальная дата периода анализа.
-# 	   :param end_date: Конечная дата периода анализа.
-# 	   :param project_name: Наименование проекта.
-# 	   """
-# 	# Создаем папку для результатов, если её еще нет
-# 	OUT_DIR  = os.path.join(BASE_DIR, "top_10_suppls", project_name)
-# 	os.makedirs(OUT_DIR, exist_ok=True)
-#
-# 	# Группируем данные по валютам
-# 	grouped_by_currency = group_by_currency(df)
-#
-# 	# Вычисляем количество лет и месяцев между датами
-# 	start_date = datetime.strptime(start_date, "%Y-%m-%d")
-# 	end_date = datetime.strptime(end_date, "%Y-%m-%d")
-# 	delta = end_date - start_date
-# 	num_years = delta.days // 365
-# 	num_months = (delta.days % 365) // 30
-#
-# 	# Формируем текстовый интервал для заголовка
-# 	interval_text = ''
-# 	if num_years > 0:
-# 		interval_text += f'{num_years} года' if num_years == 1 else f'{num_years} лет'
-# 	if num_months > 0:
-# 		if interval_text:
-# 			interval_text += ' и '
-# 		interval_text += f'{num_months} месяца' if num_months == 1 else f'{num_months} месяцев'
-#
-# 	# Проходим по каждой группе валют
-# 	# и создаем excel-файл с помощью ExcelWriter
-# 	file_exls_name = f"top_10_report_{project_name}.xlsx"
-# 	file_exls_path = os.path.join(OUT_DIR, file_exls_name)
-# 	with pd.ExcelWriter(file_exls_path, engine='xlsxwriter') as writer:
-# 		for currency, group in grouped_by_currency:
-# 			# Проверка наличия данных
-# 			if group.empty:
-# 				print(f"Нет данных для валюты {currency}, пропускаем...")
-# 				continue
-#
-# 			# Группировка по поставщикам и подсчет затрат
-# 			top_suppliers = group.groupby('winner_name')['total_price'].sum().nlargest(10)
-#
-# 			# Проверка наличия данных после группировки
-# 			if top_suppliers.empty:
-# 				print(f"Нет данных для построения графика по валюте {currency}.")
-# 				continue
-# 			# Преобразуем Series в DataFrame для записи в Excel
-# 			top_suppliers_df = top_suppliers.reset_index()
-# 			top_suppliers_df.columns = ['Supplier', 'Total Costs']
-#
-# 			# Записываем данные в Excel на отдельный лист
-# 			sheet_name = f"Top Suppliers ({currency})"
-# 			top_suppliers_df.to_excel(writer, sheet_name=sheet_name, index=False)
-#
-# 			# Добавляем форматирование
-# 			workbook = writer.book
-# 			worksheet = writer.sheets[sheet_name]
-#
-# 			# Форматируем заголовки
-# 			header_format = workbook.add_format({
-# 				'bold': True,
-# 				'text_wrap': True,
-# 				'valign': 'top',
-# 				'fg_color': '#4F81BD',
-# 				'font_color': '#FFFFFF',
-# 				'border': 1
-# 			})
-#
-# 			# Форматируем ячейки с данными
-# 			data_format = workbook.add_format({
-# 				'num_format': '#,##0',
-# 				'border': 1
-# 			})
-#
-# 			# Применяем форматирование к заголовкам
-# 			for col_num, value in enumerate(top_suppliers_df.columns.values):
-# 				worksheet.write(0, col_num, value, header_format)
-#
-# 			# Применяем форматирование к данным
-# 			for row_num, data in enumerate(top_suppliers_df.values, start=1):
-# 				for col_num, value in enumerate(data):
-# 					if col_num == 1:  # Форматируем столбец с суммами
-# 						worksheet.write(row_num, col_num, value, data_format)
-# 					else:
-# 						worksheet.write(row_num, col_num, value)
-#
-# 			# Автонастройка ширины столбцов
-# 			worksheet.set_column('A:B', 20)
-#
-# 			# вызываем функцию визуализации
-# 			save_top_suppliers_bar_chart(top_suppliers, currency, interval_text, OUT_DIR)
-#
-# 	QMessageBox.information(parent_widget, "Результат",
-# 	                        f"Анализ Топ-10 поставщиков завершен. Графики и файл {file_exls_name}"
-#                             f"сохранены в папке: {OUT_DIR}")
 
 def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name):
 	"""

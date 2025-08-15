@@ -103,7 +103,7 @@ def calculate_herfind_hirshman(contract_df):
 
 def find_alternative_suppliers(major_suppliers, merged_df):
 	# Создаем директорию для результатов
-	output_dir = r"D:\Analysis-Results\hirshman_results"
+	output_dir = r"D:\\Analysis-Results\\hirshman_results"
 	os.makedirs(output_dir, exist_ok=True)
 	
 	# Результаты анализа

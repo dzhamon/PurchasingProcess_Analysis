@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Dict, Any
 from datetime import datetime, timedelta
-
+from utils.functions import CurrencyConverter
 
 # Вспомогательные функции, которые не зависят от состояния класса, остаются вне его.
 def calculate_years_experience(supplier_contracts):
@@ -157,7 +157,6 @@ def generate_product_recommendation_summary(product_alternatives):
     else:
         return f"Хорошие возможности диверсификации: {alternatives_count} альтернатив доступно."
 
-
 class AlternativeSuppliersAnalyzer:
     def __init__(self):
         self.all_contracts_data = None
@@ -181,7 +180,7 @@ class AlternativeSuppliersAnalyzer:
 
         Args:
             current_project_data (pd.DataFrame): Отфильтрованные данные по текущему проекту/лотам/контрактам.
-            
+
             target_disciplines (list, optional): Список дисциплин для анализа. Если None, анализируются все
             дисциплины в current_project_data.
 
@@ -204,27 +203,27 @@ class AlternativeSuppliersAnalyzer:
                 "ОШИБКА: Нет полных данных контрактов (self.all_contracts_data) для запуска анализа."
             )
             return {}
-        
+
         all_disciplines_results = {}
-        
+
         # Определяем список дисциплин для анализа
         if target_disciplines is None:
-            disciplines_to_analyze =  current_project_data['discipline'].dropna().unique().tolist()
+            disciplines_to_analyze = current_project_data['discipline'].dropna().unique().tolist()
         else:
             disciplines_to_analyze = [d for d in target_disciplines if d in current_project_data['discipline'].unique()]
-            
+
         if not disciplines_to_analyze:
             print("Предупреждение: Нет дисциплин для анализа в предоставленных данных.")
             return {}
-        
+
         print(f"Начинаем анализ по дисциплинам: {'. '.join(disciplines_to_analyze)}")
-        
+
         for discipline in disciplines_to_analyze:
             print(f"\n==== Анализ по дисциплине: {discipline} ====")
-            
+
             # фильтруем данные для текущей дисциплины
             discipline_data = current_project_data[current_project_data['discipline'] == discipline]
-            
+
             if discipline_data.empty:
                 print(f" Нет данных для дисциплины {discipline}, пропускаем")
                 continue
@@ -254,23 +253,21 @@ class AlternativeSuppliersAnalyzer:
         Логический поиск альтернативных поставщиков на основе всех контрактов организации
         (Теперь это приватный метод класса, использующий self.all_contracts_data).
         """
-        print(f"🔍 ПОИСК АЛЬТЕРНАТИВ для дисциплины: {discipline}")
-        print("=" * 60)
+        # print(f"🔍 ПОИСК АЛЬТЕРНАТИВ для дисциплины: {discipline}")
+        # print("=" * 60)
 
         alternatives_by_product = {}
 
         current_products = current_project_data["product_name"].unique()
 
         for product in current_products:
-            print(f"\n📦 Анализ продукта: {product}")
-
             # Используем 'counterparty_name'
             current_suppliers = {target_supplier} if target_supplier else set(
                 current_project_data[current_project_data["product_name"] == product][
                     "counterparty_name"
                 ].unique()
             )
-            print(f"  Текущий поставщик для анализа: {target_supplier}")
+            # print(f"  Текущий поставщик для анализа: {current_suppliers}")
 
             all_product_suppliers = self._find_all_suppliers_for_product(
                 product, discipline
@@ -278,9 +275,9 @@ class AlternativeSuppliersAnalyzer:
             # Ищем альтернативы среди всех поставщиков, исключая target_supplier
             alternative_suppliers = set(all_product_suppliers.keys()) - current_suppliers
 
-            print(
-                f"   Найдено альтернативных поставщиков: {len(alternative_suppliers)}"
-            )
+            # print(
+            #     f"   Найдено альтернативных поставщиков: {len(alternative_suppliers)}"
+            # )
 
             if alternative_suppliers:
                 alternatives_by_product[product] = {
@@ -302,7 +299,7 @@ class AlternativeSuppliersAnalyzer:
                     reverse=True,
                 )[:3]
 
-                print(f"   🏆 Топ-3 альтернативы:")
+                # print(f"   🏆 Топ-3 альтернативы:")
                 for i, alt in enumerate(top_alternatives, 1):
                     print(
                         f"      {i}. {alt['supplier_name']} (рейтинг: {alt['recommendation_score']:.2f})"
@@ -311,7 +308,7 @@ class AlternativeSuppliersAnalyzer:
                         f"         Опыт: {alt['contracts_count']} контрактов, средняя цена: {alt['avg_price']:.2f})"
                     )
             else:
-                print(f"   ⚠️  Альтернативные поставщики не найдены")
+                # print(f"   ⚠️  Альтернативные поставщики не найдены")
                 alternatives_by_product[product] = {
                     "current_suppliers": list(current_suppliers),
                     "alternative_suppliers": [],
@@ -327,36 +324,45 @@ class AlternativeSuppliersAnalyzer:
         Находит всех поставщиков конкретного товара во всех контрактах
         (Теперь это приватный метод класса, использующий self.all_contracts_data)
         """
+        
         product_contracts = self.all_contracts_data[
             (self.all_contracts_data["product_name"] == product_name)
-        ] # Удалена дублирующаяся часть OR условия
-
+        ]
+        
+        # конвертируем цены за единицу и стоимость контракта в EUR
+        converter = CurrencyConverter()
+        columns_info = [
+            ("total_contract_amount", "contract_currency", "total_contract_amount_eur"),
+            ("unit_price", "contract_currency", "unit_price_eur"),
+        ]
+        product_contracts = converter.convert_multiple_columns(product_contracts, columns_info).copy()
+        # может есть смысл убрать следующее условие (искатьальтернативу и в других дисциплинах??)
         if "discipline" in product_contracts.columns:
             product_contracts = product_contracts[
                 product_contracts["discipline"] == discipline
             ]
 
         suppliers_info = {}
-        # Используем 'supplier_name'
+        # Используем 'counterparty_name'
         for supplier in product_contracts["counterparty_name"].unique():
             supplier_contracts = product_contracts[
-                product_contracts["counterparty_name"] == supplier # заменим supplier_contracts на product_contracts
+                product_contracts["counterparty_name"] == supplier
             ]
             suppliers_info[supplier] = {
                 "contracts_count": len(supplier_contracts),
                 "total_value": (
-                    supplier_contracts["total_contract_amount"].sum()
-                    if "total_contract_amount" in supplier_contracts.columns
+                    supplier_contracts["total_contract_amount_eur"].sum()
+                    if "total_contract_amount_eur" in supplier_contracts.columns
                     else 0
                 ),
                 "avg_price": (
-                    supplier_contracts["unit_price"].mean()
-                    if "unit_price" in supplier_contracts.columns
+                    supplier_contracts["unit_price_eur"].mean()
+                    if "unit_price_eur" in supplier_contracts.columns
                     else 0
                 ),
                 "price_std": (
-                    supplier_contracts["unit_price"].std()
-                    if "unit_price" in supplier_contracts.columns
+                    supplier_contracts["unit_price_eur"].std()
+                    if "unit_price_eur" in supplier_contracts.columns
                     else 0
                 ),
                 "first_contract": (
@@ -387,7 +393,6 @@ class AlternativeSuppliersAnalyzer:
     ):
         """
         Анализирует альтернативных поставщиков и ранжирует их по привлекательности.
-        (Теперь это приватный метод класса)
         """
         current_product_data = current_data[current_data["product_name"] == product]
         current_avg_price = (
@@ -429,23 +434,63 @@ class AlternativeSuppliersAnalyzer:
                 }
             )
         return analyzed_alternatives
-    
+
+
 def export_alternative_suppliers_to_excel(results: Dict[str, Any], file_path: str):
     """
     Экспортирует результаты анализы альтернативных поставщиков в Excel-файл.
     Каждая дисциплина на отдельном листе.
     """
+    print(f"🔄 Начало экспорта в файл: {file_path}")
+    print(f"📊 Количество дисциплин для экспорта: {len(results)}")
+
     try:
-        with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+        print("🔧 Создание Excel writer...")
+        with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
             for discipline, products_data in results.items():
+                print(
+                    f"📋 Обработка дисциплины: {discipline} ({len(products_data)} продуктов)"
+                )
+
                 # Создаем DataFrame для текущей дисциплины
                 discipline_export_data = []
+
                 for product, info in products_data.items():
+                    print(f"  📦 Обработка продукта: {product}")
+
                     # Текущие поставщики
                     current_suppliers_str = ", ".join(info["current_suppliers"])
 
                     # Альтернативные поставщики (детализированные)
-                    for alt in info["alternative_suppliers"]:
+                    if info["alternative_suppliers"]:
+                        print(
+                            f"    ✅ Найдено {len(info['alternative_suppliers'])} альтернатив"
+                        )
+                        for alt in info["alternative_suppliers"]:
+                            discipline_export_data.append(
+                                {
+                                    "Дисциплина": discipline,
+                                    "Продукт": product,
+                                    "Текущие поставщики": current_suppliers_str,
+                                    "Кол-во альтернатив": info["alternatives_found"],
+                                    "Рекомендация по продукту": info["recommendation"],
+                                    "Альтернативный поставщик": alt["supplier_name"],
+                                    "Рейтинг рекомендации": f"{alt['recommendation_score']:.2f}",
+                                    "Кол-во контрактов (альт.)": alt["contracts_count"],
+                                    "Ср. цена (альт., EUR)": f"{alt['avg_price']:.2f}",
+                                    "Цена от текущей (%)": f"{alt['price_vs_current']:.2f}",
+                                    "Опыт (лет, альт.)": f"{alt['years_experience']:.1f}",
+                                    "Кол-во проектов (альт.)": alt["projects_count"],
+                                    "Преимущества (альт.)": "; ".join(
+                                        alt["advantages"]
+                                    ),
+                                    "Риски (альт.)": "; ".join(alt["risks"]),
+                                    "Рекомендация по поставщику": alt["recommendation"],
+                                }
+                            )
+                    else:
+                        print(f"    ❌ Альтернативы не найдены")
+                        # Если нет альтернатив, все равно добавим строку для текущих
                         discipline_export_data.append(
                             {
                                 "Дисциплина": discipline,
@@ -453,52 +498,40 @@ def export_alternative_suppliers_to_excel(results: Dict[str, Any], file_path: st
                                 "Текущие поставщики": current_suppliers_str,
                                 "Кол-во альтернатив": info["alternatives_found"],
                                 "Рекомендация по продукту": info["recommendation"],
-                                "Альтернативный поставщик": alt["supplier_name"],
-                                "Рейтинг рекомендации": f"{alt['recommendation_score']:.2f}",
-                                "Кол-во контрактов (альт.)": alt["contracts_count"],
-                                "Ср. цена (альт., EUR)": f"{alt['avg_price']:.2f}",
-                                "Цена от текущей (%)": f"{alt['price_vs_current']:.2f}",
-                                "Опыт (лет, альт.)": f"{alt['years_experience']:.1f}",
-                                "Кол-во проектов (альт.)": alt["projects_count"],
-                                "Преимущества (альт.)": "; ".join(alt["advantages"]),
-                                "Риски (альт.)": "; ".join(alt["risks"]),
-                                "Рекомендация по поставщику": alt["recommendation"],
+                                "Альтернативный поставщик": "Нет",
+                                "Рейтинг рекомендации": "-",
+                                "Кол-во контрактов (альт.)": "-",
+                                "Ср. цена (альт., EUR)": "-",
+                                "Цена от текущей (%)": "-",
+                                "Опыт (лет, альт.)": "-",
+                                "Кол-во проектов (альт.)": "-",
+                                "Преимущества (альт.)": "-",
+                                "Риски (альт.)": "-",
+                                "Рекомендация по поставщику": "-",
                             }
                         )
 
-                # Если нет альтернатив, но есть продукт, все равно добавим строку для текущих
-                if not info["alternative_suppliers"] and products_data:
-                    discipline_export_data.append(
-                        {
-                            "Дисциплина": discipline,
-                            "Продукт": product,
-                            "Текущие поставщики": current_suppliers_str,
-                            "Кол-во альтернатив": info["alternatives_found"],
-                            "Рекомендация по продукту": info["recommendation"],
-                            "Альтернативный поставщик": "Нет",
-                            "Рейтинг рекомендации": "-",
-                            "Кол-во контрактов (альт.)": "-",
-                            "Ср. цена (альт., EUR)": "-",
-                            "Цена от текущей (%)": "-",
-                            "Опыт (лет, альт.)": "-",
-                            "Кол-во проектов (альт.)": "-",
-                            "Преимущества (альт.)": "-",
-                            "Риски (альт.)": "-",
-                            "Рекомендация по поставщику": "-",
-                        }
-                    )
-
                 if discipline_export_data:
+                    print(
+                        f"  💾 Создание DataFrame для {discipline} ({len(discipline_export_data)} строк)"
+                    )
                     df_discipline = pd.DataFrame(discipline_export_data)
+
                     # Имя листа должно быть коротким и без запрещенных символов
                     sheet_name = discipline[:31]  # Макс. 31 символ
+                    print(f"  📄 Запись в лист: {sheet_name}")
+
                     df_discipline.to_excel(writer, sheet_name=sheet_name, index=False)
+                    print(f"  ✅ Лист {sheet_name} успешно создан")
                 else:
-                    print(f"Нет данных для экспорта по дисциплине: {discipline}")
+                    print(f"  ⚠️ Нет данных для экспорта по дисциплине: {discipline}")
+
+        print("💾 Сохранение файла...")
         print(
             f"✅ Результаты анализа альтернативных поставщиков успешно экспортированы в: {file_path}"
         )
         return True
+
     except Exception as e:
         print(f"❌ Ошибка при экспорте результатов анализа в Excel: {e}")
         return False
