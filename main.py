@@ -602,9 +602,8 @@ class Window(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
     def run_ClusterAnalyze(self):
-        # Метод для классификации поставщиков с обучением методом SeedKMeans
-        from models_analyses.clusterAnalysis_suppliers import run_supplier_clustering
-        
+        # Метод для классификации поставщиков
+        from models_analyses.clusterAnalysis_suppliers import run_enhanced_supplier_clustering
         if self._current_filtered_df is not None:
             self.progress_bar.show()
             self.show_progress(10)
@@ -622,7 +621,7 @@ class Window(QMainWindow):
             ]
             contracts_data = converter.convert_multiple_columns(self._current_filtered_df, columns_info)
             
-            supplier_clusters, analyzer = run_supplier_clustering(contracts_data)
+            supplier_clusters, analyzer = run_enhanced_supplier_clustering(contracts_data)
 
 
     def run_analyze_supplier_friquency(self):
