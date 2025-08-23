@@ -637,8 +637,42 @@ class EnhancedSupplierClusterAnalyzer:
             for i, rec in enumerate(recs, 1):
                 print(f"  {i}. {rec}")
 
+    def save_results_to_excel(self, output_folder):
+        """
+        Сохраняет результаты кластеризации и сводную статистику в Excel-файлы.
+        """
+        if self.clusters is None:
+            print("Сначала выполните кластеризацию!")
+            return
 
-def run_enhanced_supplier_clustering(df):
+        # Создание папки, если она не существует
+        import os
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            print(f"✅ Создана папка для результатов: {output_folder}")
+
+        # 1. Сохранение всех данных с кластерами
+        full_path_clusters = os.path.join(output_folder, "supplier_clusters.xlsx")
+        self.clusters.to_excel(full_path_clusters, index=False)
+        print(f"✅ Результаты кластеризации сохранены в: {full_path_clusters}")
+
+        # 2. Сохранение сводной статистики по кластерам
+        cluster_summary = self.analyze_enhanced_clusters()
+        full_path_summary = os.path.join(output_folder, "cluster_summary.xlsx")
+        cluster_summary.to_excel(full_path_summary)
+        print(f"✅ Сводная статистика по кластерам сохранена в: {full_path_summary}")
+
+        # 3. Сохранение выбросов в отдельный файл (если они есть)
+        outliers_mask = (self.clusters['cluster'] >= self.clusters['cluster'].nunique() -
+                         len(self.clusters[self.clusters['cluster'].duplicated(keep=False) == False]))
+        if outliers_mask.any():
+            outliers_df = self.clusters[outliers_mask]
+            full_path_outliers = os.path.join(output_folder, "outlier_suppliers.xlsx")
+            outliers_df.to_excel(full_path_outliers, index=False)
+            print(f"✅ Обнаруженные выбросы сохранены в: {full_path_outliers}")
+
+
+def run_enhanced_supplier_clustering(df, output_folder=r'D:\Analysis-Results\Cluster_Analysis'):
     """
     Запуск полного расширенного анализа кластеризации поставщиков
     """
@@ -657,5 +691,8 @@ def run_enhanced_supplier_clustering(df):
 
     # Получаем рекомендации
     analyzer.get_enhanced_recommendations()
+
+    # Сохраняем результаты в Excel
+    analyzer.save_results_to_excel(output_folder)
 
     return supplier_clusters, analyzer
