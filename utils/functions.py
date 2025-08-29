@@ -12,6 +12,40 @@ import re
 
 _cached_data = None
 
+company_mapped_grouped = {
+	'GE Nuovo Pignone' :
+		['Nuovo Pignone / GE Oil & Gas (Italy)',
+		'Nuovo Pignone International S.r.l. (BHGE)',
+		'BAKER HUGHES NUOVO PIGNONE INTERNATIONAL SRL'],
+	'СП "Ташкент трубный завод"' :
+		['Не использовать V L GALPERIN NOMIDAGI TOSHKENT TRUBA ZAVODI СП ООО' ,
+		'[Удалено]СП "Ташкентский трубный завод"',
+		'СП "Ташкентский трубный завод"',
+		'V L GALPERIN NOMIDAGI TOSHKENT TRUBA ZAVODI СП ООО'],
+	'ООО ТСК-РЕГИОН' : ['ТСК-РЕГИОН ООО','ТСК РЕГИОН','ТСК Регион '],
+	'ООО УПСК-экспорт': ['УПСК-ЭКСПОРТ ООО', 'не использовать УПСК-экспорт ООО',
+						'ООО «УПСК-экспорт»'],
+	'М5-ЭКСПОРТ ООО' : ['[Удалено]ООО"М5Group"', 'М5-ЭКСПОРТ ООО',
+	                    'не использовать дубль М5 ГРУПП', 'М5 ГРУПП ООО'],
+	'ООО "Темир Бетон' : ['ООО "Темир Бетон Конструкциялари Комбинати"'],
+	'DREAM ALLIANCE' : ['не использовать DREAM-ALLIANCE'],
+	'NEW FORMAT TASHKENT' : ['не использовать NEW FORMAT TASHKENT'],
+	'NASIBA GAVHAR' : ['не использовать NASIBA GAVHAR'],
+	'Daromad Munira Fayz' : ['Daromad Munira Fayz Textile<не использовать>'],
+	'СП OOO AZIA METAL PROF' : ['СП ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ AZIA METALL PROF'],
+	'ООО ОМСКИЙ ЗАВОД ТРУБ АРМАТ' : ['ТОРГОВЫЙ ДОМ ОМСКИЙ ЗАВОД ТРУБОПРОВОДНОЙ АРМАТУРЫ ООО'],
+	'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ' : ['ОМСКИЙ ЗАВОД ЗАПОРНОЙ АРМАТУРЫ ООО'],
+	'Омский з-д запорн армат' :['ООО «Омский завод запорной арматуры»', 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ']
+}
+company_lookup = {}
+for main_name, aliases in company_mapped_grouped.items():
+	for alias in aliases:
+		company_lookup[alias] = main_name
+		
+# Функция нормализации
+def normalize_company_name(name: str) -> str:
+	return company_lookup.get(name, name)
+
 
 def cleanDataDF(data_df):
 	# Удаляем строки, где good_name, winner_name, discipline, currency являются None
@@ -50,29 +84,8 @@ def cleanDataDF(data_df):
 		else:
 			print(f" Предупреждение: Числовой столбец '{col}' не найден.")
 	
-	# Нормализация названий компаний
-	data_df.loc[:, 'winner_name'] = data_df['winner_name'].replace({
-		'Не использовать V L GALPERIN NOMIDAGI TOSHKENT TRUBA ZAVODI СП ООО': 'СП "Ташкент трубный завод"',
-		'[Удалено]СП "Ташкентский трубный завод"': 'СП "Ташкент трубный завод"',
-		'СП "Ташкентский трубный завод"': 'СП "Ташкент трубный завод"',
-		'V L GALPERIN NOMIDAGI TOSHKENT TRUBA ZAVODI СП ООО': 'СП "Ташкент трубный завод"',
-		'ТСК-РЕГИОН ООО': 'ООО ТСК-РЕГИОН',
-		'ТСК РЕГИОН': 'ООО ТСК-РЕГИОН',
-		'ТСК Регион ': 'ООО ТСК-РЕГИОН',
-		'ООО "УПСК-экспорт"': 'УПСК-ЭКСПОРТ',
-		'УПСК-ЭКСПОРТ ООО': 'УПСК-ЭКСПОРТ',
-		'не использовать УПСК-экспорт ООО': 'УПСК-ЭКСПОРТ',
-		'ООО «УПСК-экспорт»' : 'УПСК-ЭКСПОРТ',
-		'ООО "Темир Бетон Конструкциялари Комбинати"': 'ООО "Темир Бетон',
-		'не использовать DREAM-ALLIANCE': 'DREAM ALLIANCE',
-		'не использовать NEW FORMAT TASHKENT': 'NEW FORMAT TASHKENT',
-		'не использовать NASIBA GAVHAR': 'NASIRA GAVHAR',
-		'Daromad Munira Fayz Textile<не использовать>': 'Daromad Munira Fayz',
-		'СП ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ AZIA METALL PROF': 'СП OOO AZIA METAL PRPF',
-		'ТОРГОВЫЙ ДОМ ОМСКИЙ ЗАВОД ТРУБОПРОВОДНОЙ АРМАТУРЫ ООО' : 'ООО ОМСКИЙ ЗАВОД ТРУБ АРМАТ',
-		'ОМСКИЙ ЗАВОД ЗАПОРНОЙ АРМАТУРЫ ООО': 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ',
-		'ООО «Омский завод запорной арматуры»': 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ'
-	})
+	# Замена разных наименований одной компании-поставщика
+	data_df['winner_name'] = data_df['winner_name'].apply(normalize_company_name)
 	
 	return data_df
 
@@ -104,13 +117,9 @@ def clean_contract_data(df_c):
 	df_c['contract_signing_date'] = pd.to_datetime(df_c['contract_signing_date'], format='%Y-%m-%d', errors='coerce')
 	df_c['lot_end_date'] = pd.to_datetime(df_c['lot_end_date'], format='%Y-%m-%d', errors='coerce')
 	
-	# Замена разных написаний на единое название для компании
-	df_c['counterparty_name'] = df_c['counterparty_name'].replace({
-		'Не использовать V L GALPERIN NOMIDAGI TOSHKENT TRUBA ZAVODI СП ООО': 'СП "Ташкент трубный завод"',
-		'[Удалено]СП "Ташкентский трубный завод"': 'СП "Ташкент трубный завод"',
-		'СП "Ташкентский трубный завод"': 'СП "Ташкент трубный завод"',
-		'V L GALPERIN NOMIDAGI TOSHKENT TRUBA ZAVODI СП ООО': 'СП "Ташкент трубный завод"'
-	})
+	# замена разных написаний одной компании-поставщика
+	df_c['counterparty_name'] = df_c['counterparty_name'].apply(normalize_company_name)
+	
 	return df_c
 
 def get_cached_data():

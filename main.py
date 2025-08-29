@@ -253,8 +253,8 @@ class Window(QMainWindow):
         analysisMenu.addAction(self.analyzeKPIAction)
         analysisMenu.addAction(self.efficiency_analyses_action)
         analysisMenu.addAction(self.suppliers_by_unit_price_action)
-        analysisMenu.addAction(self.find_cross_discipline_lotsAction)
-        analysisMenu.addAction(self.lotcount_peryearAction)
+        # analysisMenu.addAction(self.find_cross_discipline_lotsAction)
+        # analysisMenu.addAction(self.lotcount_peryearAction)
 
         # Меню Анализ по Контрактам
         analysisMenuContract = menuBar.addMenu("Анализ данных по Контрактам")
@@ -307,7 +307,22 @@ class Window(QMainWindow):
             y=20,
         )
 
-
+        self.networkanalyseAction = QAction("Сетевой анализ проектов", self)
+        self.setActionTooltip(
+            self.networkanalyseAction,
+            "Анализ данных по Лотам",
+            "menu_item_3",
+            x=20,
+            y=20,
+        )
+        
+        self.analyzeKPIAction = QAction("Анализ KPI", self)
+        self.setActionTooltip(
+            self.analyzeKPIAction,
+            "Анализ данных по Лотам",
+            "menu_item_4", x=20, y=20
+        )
+        
         self.suppliersfriquencyAction = QAction("Анализ частоты поставщиков", self)
         self.setActionTooltip(
             self.suppliersfriquencyAction,
@@ -317,61 +332,39 @@ class Window(QMainWindow):
             y=20,
         )
 
-        self.networkanalyseAction = QAction("Сетевой анализ проектов", self)
+        self.efficiency_analyses_action = QAction("Анализ эффективности исполнителей и поиск аномалий", self)
         self.setActionTooltip(
-            self.networkanalyseAction,
+            self.efficiency_analyses_action,
             "Анализ данных по Лотам",
             "menu_item_5",
             x=20,
             y=20,
         )
-
-        self.analyzeKPIAction = QAction("Анализ KPI", self)
-        self.setActionTooltip(
-            self.analyzeKPIAction, "Анализ данных по Лотам", "menu_item_6", x=20, y=20
-        )
-
-        self.efficiency_analyses_action = QAction(
-            "Анализ эффективности исполнителей и поиск аномалий", self
-        )
-        self.setActionTooltip(
-            self.efficiency_analyses_action,
-            "Анализ данных по Лотам",
-            "menu_item_7",
-            x=20,
-            y=20,
-        )
-        self.suppliers_by_unit_price_action = QAction(
-            "Ранжирование Поставщиков по цене за единицу товара", self
-        )
+        self.suppliers_by_unit_price_action = QAction("Ранжирование Поставщиков по цене за единицу товара", self)
         self.setActionTooltip(
             self.suppliers_by_unit_price_action,
             "Анализ данных по Лотам",
-            "menu_item_8",
+            "menu_item_6",
             x=20,
             y=20,
         )
-        self.find_cross_discipline_lotsAction = QAction(
-            "Поиск и анализ лотов общих для разных дисциплин", self
-        )
-        self.setActionTooltip(
-            self.find_cross_discipline_lotsAction,
-            "Анализ данных по Лотам",
-            "menu_item_9",
-            x=20,
-            y=20,
-        )
+        # self.find_cross_discipline_lotsAction = QAction("Поиск и анализ лотов общих для разных дисциплин", self)
+        # self.setActionTooltip(
+        #     self.find_cross_discipline_lotsAction,
+        #     "Анализ данных по Лотам",
+        #     "menu_item_9",
+        #     x=20,
+        #     y=20,
+        # )
 
-        self.lotcount_peryearAction = QAction(
-            "Количество лотов по дисциплинам по-квартально", self
-        )
-        self.setActionTooltip(
-            self.lotcount_peryearAction,
-            "Анализ данных по Лотам",
-            "menu_item_10",
-            x=20,
-            y=20,
-        )
+        # self.lotcount_peryearAction = QAction("Количество лотов по дисциплинам по-квартально", self)
+        # self.setActionTooltip(
+        #     self.lotcount_peryearAction,
+        #     "Анализ данных по Лотам",
+        #     "menu_item_",
+        #     x=20,
+        #     y=20,
+        # )
 
         # Действия для меню Анализ данных по Контрактам
         self.analyzeClasterAction = QAction("Кластерный анализ", self)
@@ -447,19 +440,17 @@ class Window(QMainWindow):
             self.run_analyze_monthly_cost
         )
         self.analyzeTopSuppliersAction.triggered.connect(self.run_analyze_top_suppliers)
-        self.suppliersfriquencyAction.triggered.connect(
-            self.run_analyze_supplier_friquency
-        )
+        self.suppliersfriquencyAction.triggered.connect(self.run_analyze_supplier_friquency)
         self.networkanalyseAction.triggered.connect(self.run_network_analysis)
         self.analyzeKPIAction.triggered.connect(self.run_kpi_analysis)
         self.efficiency_analyses_action.triggered.connect(self.run_efficiency_analyses)
         self.suppliers_by_unit_price_action.triggered.connect(
             self.run_analyze_by_unit_price
         )
-        self.find_cross_discipline_lotsAction.triggered.connect(
-            self.run_find_cross_discipline_lots
-        )
-        self.lotcount_peryearAction.triggered.connect(self.run_lotcount_peryear)
+        # self.find_cross_discipline_lotsAction.triggered.connect(
+        #     self.run_find_cross_discipline_lots
+        # )
+        # self.lotcount_peryearAction.triggered.connect(self.run_lotcount_peryear)
 
         # Подключение сигналов к методам Анализа данных по Контрактам
         self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
@@ -574,28 +565,11 @@ class Window(QMainWindow):
         if self._current_filtered_df is not None:
             self.progress_bar.show()
             self.show_progress(10)
-
-            """Используем минимальную и максимальную даты из отфильтрованных данных"""
-            start_date = self._current_filtered_df["close_date"].min()
-            end_date = self._current_filtered_df["close_date"].max()
-            uniq_project_name = self._current_filtered_df["project_name"].unique()
-            # Проверяем, что уникальное значение только одно
-            if len(uniq_project_name) == 1:
-                project_name = (
-                    uniq_project_name.item()
-                )  # Извлекаем значение из массива как строку
-            else:
-                raise ValueError(
-                    f"Ожидалось одно уникальное значение project_name, но найдено: {uniq_project_name}"
-                )
-
-            self.show_progress(30)
+           
             from models_analyses.analysis import analyze_top_suppliers
 
             # здесь логика для анализа данных
-            analyze_top_suppliers(
-                self, self._current_filtered_df, start_date, end_date, project_name
-            )
+            analyze_top_suppliers(self, self._current_filtered_df)
             self.show_progress(100)
             self.hide_progress()
         else:
@@ -649,9 +623,10 @@ class Window(QMainWindow):
             self.show_progress(10)
 
             print("Запуск сетевого анализа")
-            from models_analyses.analysis import network_analysis
-
-            network_analysis(self, self._current_filtered_df)
+            # from models_analyses.analysis import network_analysis
+            # from models_analyses.analysis import network_analysis_improved
+            from models_analyses.graph_analyze_common_suppliers import analyze_and_visualize_suppliers
+            analyze_and_visualize_suppliers(self, self._current_filtered_df)
             self.show_progress(100)
             self.hide_progress()
 

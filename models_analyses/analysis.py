@@ -202,25 +202,25 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 		f"Анализ месячных затрат в EUR сохранен в:\n{OUT_DIR}"
 	)
 
-def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name):
+def analyze_top_suppliers(parent_widget, df):
 	"""
 	Расширенный анализ топ-10 поставщиков с исправленными ошибками и улучшенной обработкой
 	"""
 	try:
+		project_name = str(df['project_name'].unique())
 		# Создаем папку для результатов (с проверкой имени проекта)
-		safe_project_name = "".join(c for c in project_name if c.isalnum() or c in (' ', '_')).rstrip()
-		OUT_DIR = os.path.join(BASE_DIR, "top_suppliers_analysis", safe_project_name)
+		OUT_DIR = os.path.join(BASE_DIR, "top10_suppliers_analysis", project_name)
 		os.makedirs(OUT_DIR, exist_ok=True)
 		
 		# Конвертация дат и фильтрация
 		df['close_date'] = pd.to_datetime(df['close_date'], errors='coerce')
-		start_dt = pd.to_datetime(start_date)
-		end_dt = pd.to_datetime(end_date)
+		start_dt = pd.to_datetime(df['close_date'].min())
+		end_dt = pd.to_datetime(df['close_date'].max())
 		filtered_df = df[(df['close_date'] >= start_dt) & (df['close_date'] <= end_dt)].copy()
 		
 		if filtered_df.empty:
 			QMessageBox.warning(parent_widget, "Ошибка", "Нет данных для заданного диапазона дат.")
-			return
+			return QMessageBox.warning(parent_widget, "Ошибка", "Проверьте правильнось даты закрытия Лота")
 		
 		# Конвертация в EUR
 		converter = CurrencyConverter()
@@ -235,7 +235,7 @@ def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name)
 		
 		# Создаем уникальное имя файла
 		timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-		file_name = f"suppliers_analysis_{safe_project_name}_{timestamp}.xlsx"
+		file_name = f"suppliers_analysis_{project_name}_{timestamp}.xlsx"
 		file_path = os.path.join(OUT_DIR, file_name)
 		
 		# Анализ топ поставщиков
@@ -323,77 +323,77 @@ def analyze_top_suppliers(parent_widget, df, start_date, end_date, project_name)
 						)
 						worksheet.set_column(col_num, col_num, max_len + 2)
 					
-					# Визуализация
-					plt.figure(figsize=(18, 12))
-					
-					# График 1: Топ-10 поставщиков (EUR)
-					plt.subplot(2, 2, 1)
-					top_suppliers['Общая сумма (EUR)'].sort_values().plot(kind='barh', color='steelblue')
-					plt.title(f'Топ-10 поставщиков ({interval_text})')
-					plt.xlabel('Сумма закупок, EUR')
-					plt.grid(axis='x')
-					
-					# График 2: Соотношение суммы и количества закупок (исправленный)
-					plt.subplot(2, 2, 2)
-					for i in range(len(top_suppliers)):
-						plt.scatter(
-							top_suppliers.iloc[i]['Кол-во закупок'],
-							top_suppliers.iloc[i]['Общая сумма (EUR)'],
-							s=top_suppliers.iloc[i]['Средняя сумма'] * 0.1,
-							alpha=0.6
-						)
-					plt.text(
-						top_suppliers.iloc[i]['Кол-во закупок'],
-						top_suppliers.iloc[i]['Общая сумма (EUR)'],
-						top_suppliers.index[i],
-						fontsize=8,
-						ha='center',
-						va='bottom'
-					)
-					plt.title('Соотношение количества и суммы закупок')
-					plt.xlabel('Количество закупок')
-					plt.ylabel('Общая сумма, EUR')
-					plt.grid(True)
-					
-					# График 3: Доля топ-10 поставщиков
-					plt.subplot(2, 2, 3)
-					total_sum = filtered_df['total_price_eur'].sum()
-					top_sum = top_suppliers['Общая сумма (EUR)'].sum()
-					other_sum = total_sum - top_sum
-					plt.pie([top_sum, other_sum],
-					        labels=['Топ-10 поставщиков', 'Остальные'],
-					        autopct=lambda p: f'{p:.1f}%\n({p * total_sum / 100:,.0f} EUR)',
-					        colors=['lightcoral', 'lightgray'])
-					plt.title('Доля топ-10 поставщиков в общих затратах')
-					
-					# График 4: Динамика по месяцам для топ-3 поставщиков
-					plt.subplot(2, 2, 4)
-					top_3_suppliers = top_suppliers.index[:3]
-					for supplier in top_3_suppliers:
-						supplier_data = top_suppliers[supplier]
-					plt.plot(supplier_data.index, supplier_data, marker='o', label=supplier)
+			# Визуализация ===============================
+			plt.figure(figsize=(18, 12))
+			
+			# График 1: Топ-10 поставщиков (EUR)
+			plt.subplot(2, 2, 1)
+			top_suppliers['Общая сумма (EUR)'].sort_values().plot(kind='barh', color='steelblue')
+			plt.title(f'Топ-10 поставщиков ({interval_text})')
+			plt.xlabel('Сумма закупок, EUR')
+			plt.grid(axis='x')
+			
+			# График 2: Соотношение суммы и количества закупок (исправленный)
+			plt.subplot(2, 2, 2)
+			for i in range(len(top_suppliers)):
+				plt.scatter(
+					top_suppliers.iloc[i]['Кол-во закупок'],
+					top_suppliers.iloc[i]['Общая сумма (EUR)'],
+					s=top_suppliers.iloc[i]['Средняя сумма'] * 0.1,
+					alpha=0.6
+				)
+				plt.text(
+					top_suppliers.iloc[i]['Кол-во закупок'],
+					top_suppliers.iloc[i]['Общая сумма (EUR)'],
+					top_suppliers.index[i],
+					fontsize=8,
+					ha='center',
+					va='bottom'
+				)
+			plt.title('Соотношение количества и суммы закупок')
+			plt.xlabel('Количество закупок')
+			plt.ylabel('Общая сумма, EUR')
+			plt.grid(True)
+			
+			# График 3: Доля топ-10 поставщиков
+			plt.subplot(2, 2, 3)
+			total_sum = filtered_df['total_price_eur'].sum()
+			top_sum = top_suppliers['Общая сумма (EUR)'].sum()
+			other_sum = total_sum - top_sum
+			plt.pie([top_sum, other_sum],
+			        labels=['Топ-10 поставщиков', 'Остальные'],
+			        autopct=lambda p: f'{p:.1f}%\n({p * total_sum / 100:,.0f} EUR)',
+			        colors=['lightcoral', 'lightgray'])
+			plt.title('Доля топ-10 поставщиков в общих затратах')
+			
+			# График 4: Динамика по месяцам для топ-3 поставщиков
+			plt.subplot(2, 2, 4)
+			top_3_suppliers = top_suppliers.index[:3]
+			for supplier in top_3_suppliers:
+				if supplier in monthly_sum.columns:
+					plt.plot(monthly_sum.index, monthly_sum[supplier], marker='o', label=supplier)
 					plt.title('Динамика топ-3 поставщиков по месяцам')
 					plt.xlabel('Месяц')
 					plt.ylabel('Сумма, EUR')
 					plt.xticks(rotation=45)
 					plt.legend()
 					plt.grid(True)
+			
+			plt.tight_layout()
+			
+			# Сохраняем графики
+			chart_path = os.path.join(OUT_DIR, f'suppliers_visualization_{timestamp}.png')
+			plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+			plt.close() # ====================================
 					
-					plt.tight_layout()
-					
-					# Сохраняем графики
-					chart_path = os.path.join(OUT_DIR, f'suppliers_visualization_{timestamp}.png')
-					plt.savefig(chart_path, dpi=300, bbox_inches='tight')
-					plt.close()
-					
-					# Показываем сообщение об успехе
-					QMessageBox.information(
-						parent_widget,
-						"Анализ завершен",
-						f"Анализ поставщиков успешно сохранен:\n\n"
-						f"Excel-файл: {file_path}\n"
-						f"Графики: {chart_path}"
-					)
+			# Показываем сообщение об успехе
+			QMessageBox.information(
+				parent_widget,
+				"Анализ завершен",
+				f"Анализ поставщиков успешно сохранен:\n\n"
+				f"Excel-файл: {file_path}\n"
+				f"Графики: {chart_path}"
+			)
 	
 	except Exception as e:
 		(
@@ -550,6 +550,114 @@ def network_analysis(parent_widget, df):
 	                        f"Метод сетевого анализа завершен. Файлы сохранены в папке {output_folder}")
 	return
 
+def network_analysis_improved(parent_widget, df):
+    """
+    Улучшенный сетевой анализ для одного проекта с визуализацией
+    """
+    print("Запускается метод сетевого анализа и построения графов")
+
+    # Проверка наличия необходимых колонок
+    required_columns = ["project_name", "currency", "discipline", "winner_name"]
+    if not all(col in df.columns for col in required_columns):
+        QMessageBox.warning(parent_widget, "Ошибка", "Отсутствуют необходимые колонки.")
+        return
+
+    # Подготовка данных и папок
+    selected_project = df["project_name"].iloc[0]
+    output_folder = os.path.join(
+        os.getcwd(), "network_graphs"
+    )  # Использование относительного пути
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Список алгоритмов размещения
+    layouts = {
+        "spring": nx.spring_layout,
+        "kamada_kawai": nx.kamada_kawai_layout,
+    }
+
+    # Создание графа
+    G = nx.Graph()
+
+    # Добавляем узлы и связи
+    for _, row in df.iterrows():
+        project = row["project_name"]
+        discipline = row["discipline"]
+        supplier = row["winner_name"]
+
+        # Добавляем узлы, если их нет
+        G.add_node(project, type="project", color="red")
+        G.add_node(discipline, type="discipline", color="green")
+        G.add_node(supplier, type="supplier", color="lightblue")
+
+        # Добавляем связи
+        G.add_edge(project, discipline)
+        G.add_edge(discipline, supplier)
+
+    # Получение цветов узлов
+    node_colors = [G.nodes[node]["color"] for node in G.nodes()]
+
+    # Перебираем алгоритмы и строим графики
+    for layout_name, layout_func in layouts.items():
+        print(f"Построение графика с размещением: {layout_name}")
+
+        try:
+            pos = layout_func(G, seed=42) if layout_name == "spring" else layout_func(G)
+        except Exception as e:
+            print(f"Ошибка при вычислении layout {layout_name}: {e}")
+            continue
+
+        plt.figure(figsize=(15, 10))
+        nx.draw(
+            G,
+            pos,
+            with_labels=True,
+            node_size=700,
+            node_color=node_colors,
+            font_size=6,
+            font_color="black",
+            edge_color="gray",
+        )
+
+        # Добавляем легенду
+        legend_labels = {
+            "project": "Проект",
+            "discipline": "Дисциплина",
+            "supplier": "Поставщик",
+        }
+        legend_handles = [
+            plt.Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                label=label,
+                markersize=10,
+                markerfacecolor=color,
+            )
+            for label, color in [
+                ("Проект", "red"),
+                ("Дисциплина", "green"),
+                ("Поставщик", "lightblue"),
+            ]
+        ]
+        plt.legend(handles=legend_handles, title="Тип узла", loc="upper left")
+
+        # Заголовок и пояснения
+        title = f"Сетевой анализ проекта {selected_project} ({layout_name.capitalize()} Layout)"
+        plt.title(title, fontsize=14)
+
+        file_path = os.path.join(
+            output_folder, f"network_{selected_project}_{layout_name}.png"
+        )
+        plt.savefig(file_path, dpi=300)
+        print(f"График с размещением {layout_name} сохранен: {file_path}")
+        plt.close()
+
+    QMessageBox.information(
+        parent_widget,
+        "Сообщение",
+        f"Метод сетевого анализа завершен. Файлы сохранены в папке {output_folder}",
+    )
 
 def find_common_suppliers_between_disciplines(df):
 	"""

@@ -473,30 +473,43 @@ class EnhancedSupplierClusterAnalyzer:
             print(f"  Среднее кол-во контрактов: {avg_contracts:.1f}")
             print(f"  Средний опыт работы: {avg_years:.1f} лет")
 
-            # Показываем топ-3 поставщиков в кластере
-            top_suppliers = cluster_data.nlargest(3, "total_volume")[
+            # Показываем топ- поставщиков в кластере
+            top_suppliers = cluster_data.nlargest(5, "total_volume")[
                 "counterparty_name"
             ].tolist()
             print(
-                f"  Топ поставщики: {', '.join(top_suppliers[:2])}{'...' if len(top_suppliers) > 2 else ''}"
+                f"  Топ поставщики: {', '.join(top_suppliers[:4])}{'...' if len(top_suppliers) > 4 else ''}"
             )
 
         return cluster_summary
-
-    def visualize_enhanced_clusters(self):
-        """Расширенная визуализация кластеров"""
+    
+    def visualize_enhanced_clusters(self, output_folder):
+        import os
+        import pandas as pd
+        import numpy as np
+        from sklearn.decomposition import PCA
+        import matplotlib.pyplot as plt
+        """
+        Расширенная визуализация кластеров.
+        Сохраняет графики в указанную папку.
+        """
         if self.clusters is None:
             print("Сначала выполните кластеризацию!")
             return
-
+    
+        # 1. Создание папки, если она не существует
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            print(f"✅ Создана папка для результатов: {output_folder}")
+    
         # Подготовка данных для PCA
         features = self.clusters[self.feature_columns]
         features_scaled = self.scaler.transform(features)
-
+    
         # PCA для визуализации
         pca = PCA(n_components=2)
         features_pca = pca.fit_transform(features_scaled)
-
+    
         # Создаем DataFrame для удобства
         plot_data = pd.DataFrame(
             {
@@ -509,10 +522,10 @@ class EnhancedSupplierClusterAnalyzer:
                 "diversification": self.clusters.get("diversification_index", 1),
             }
         )
-
+    
         # Создаем комплексную визуализацию
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-
+    
         # 1. Основной PCA scatter plot
         scatter1 = ax1.scatter(
             plot_data["PC1"],
@@ -527,7 +540,7 @@ class EnhancedSupplierClusterAnalyzer:
         ax1.set_title("PCA кластеров (размер = объем закупок)")
         ax1.grid(True, alpha=0.3)
         plt.colorbar(scatter1, ax=ax1, label="Кластер")
-
+    
         # 2. Объем vs Количество контрактов
         scatter2 = ax2.scatter(
             self.clusters["total_volume"],
@@ -541,7 +554,7 @@ class EnhancedSupplierClusterAnalyzer:
         ax2.set_title("Объем vs Активность")
         ax2.set_xscale("log")
         ax2.grid(True, alpha=0.3)
-
+    
         # 3. Волатильность vs Размер
         if "price_volatility" in self.clusters.columns:
             scatter3 = ax3.scatter(
@@ -556,7 +569,7 @@ class EnhancedSupplierClusterAnalyzer:
             ax3.set_title("Стабильность vs Размер контракта")
             ax3.set_yscale("log")
             ax3.grid(True, alpha=0.3)
-
+    
         # 4. Диверсификация vs Специализация
         if (
             "diversification_index" in self.clusters.columns
@@ -573,11 +586,16 @@ class EnhancedSupplierClusterAnalyzer:
             ax4.set_ylabel("Коэффициент специализации")
             ax4.set_title("Диверсификация vs Специализация")
             ax4.grid(True, alpha=0.3)
-
+    
         plt.tight_layout()
-        plt.savefig("cluster_visualization.png")
+    
+        # 2. Создание полного пути и сохранение графика
+        full_path_visualization = os.path.join(output_folder, "cluster_visualization.png")
+        plt.savefig(full_path_visualization)
+    
         plt.show()
-
+    
+        print(f"✅ Графики визуализации сохранены в: {full_path_visualization}")
         print(f"PCA объясняет {pca.explained_variance_ratio_.sum():.1%} дисперсии")
         print(f"Использовано {len(self.feature_columns)} признаков для кластеризации")
 
@@ -670,7 +688,93 @@ class EnhancedSupplierClusterAnalyzer:
             full_path_outliers = os.path.join(output_folder, "outlier_suppliers.xlsx")
             outliers_df.to_excel(full_path_outliers, index=False)
             print(f"✅ Обнаруженные выбросы сохранены в: {full_path_outliers}")
-
+    
+    def save_cluster_interpretation_to_excel(self, output_folder):
+        """
+        Сохраняет детальную интерпретацию кластеров в Excel.
+        """
+        if self.clusters is None:
+            print("Сначала выполните кластеризацию!")
+            return
+    
+        import os
+        import pandas as pd
+    
+        # Создание папки, если она не существует
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            print(f"✅ Создана папка для результатов: {output_folder}")
+    
+        # Подготовка данных для сохранения
+        interpretation_data = []
+    
+        # Цикл по кластерам
+        for cluster_id in sorted(self.clusters["cluster"].unique()):
+            cluster_data = self.clusters[self.clusters["cluster"] == cluster_id]
+    
+            # Расчет характеристик кластера
+            avg_volume = cluster_data["total_volume"].mean()
+            avg_volatility = (
+                cluster_data["price_volatility"].mean()
+                if "price_volatility" in cluster_data.columns
+                else 0
+            )
+            avg_projects = cluster_data["projects_count"].mean()
+            avg_contracts = cluster_data["contracts_count"].mean()
+            avg_years = cluster_data["years_active"].mean()
+    
+            # Определение категории
+            if avg_volume > self.clusters["total_volume"].quantile(0.8):
+                if avg_volatility < 0.2 and avg_years > 2:
+                    category = "🏆 PREMIUM (крупные, стабильные, опытные)"
+                else:
+                    category = "⚡ КРУПНЫЕ (высокий объем, но нестабильные)"
+            elif avg_contracts > self.clusters["contracts_count"].quantile(0.7):
+                if avg_projects > 3:
+                    category = "🔄 АКТИВНЫЕ УНИВЕРСАЛЫ (частые заказы, много проектов)"
+                else:
+                    category = (
+                        "🔄 АКТИВНЫЕ СПЕЦИАЛИСТЫ (частые заказы, узкая специализация)"
+                    )
+            elif avg_years < 1:
+                category = "🆕 НОВЫЕ (недавно начали работать)"
+            elif avg_projects == 1:
+                category = "🎯 УЗКОСПЕЦИАЛИЗИРОВАННЫЕ (работают в одном проекте)"
+            else:
+                category = "📉 РЕДКИЕ (нерегулярные поставщики)"
+    
+            # Получение топ-поставщиков
+            top_suppliers = cluster_data.nlargest(5, "total_volume")[
+                "counterparty_name"
+            ].tolist()
+    
+            # Добавление данных в список
+            interpretation_data.append(
+                {
+                    "Cluster ID": cluster_id,
+                    "Category": category,
+                    "Number of Suppliers": len(cluster_data),
+                    "Average Volume (EUR)": round(avg_volume, 2),
+                    "Price Volatility": round(avg_volatility, 3),
+                    "Average Projects": round(avg_projects, 1),
+                    "Average Contracts": round(avg_contracts, 1),
+                    "Average Years Active": round(avg_years, 1),
+                    "Top Suppliers": ", ".join(top_suppliers),
+                }
+            )
+    
+        # Создание DataFrame из собранных данных
+        interpretation_df = pd.DataFrame(interpretation_data)
+    
+        # Сохранение в Excel
+        full_path_interpretation = os.path.join(
+            output_folder, "cluster_interpretation.xlsx"
+        )
+        interpretation_df.to_excel(full_path_interpretation, index=False)
+    
+        print(
+            f"✅ Детальная интерпретация кластеров сохранена в: {full_path_interpretation}"
+        )
 
 def run_enhanced_supplier_clustering(df, output_folder=r'D:\Analysis-Results\Cluster_Analysis'):
     """
@@ -687,12 +791,13 @@ def run_enhanced_supplier_clustering(df, output_folder=r'D:\Analysis-Results\Clu
     cluster_summary = analyzer.analyze_enhanced_clusters()
 
     # Визуализируем
-    analyzer.visualize_enhanced_clusters()
+    analyzer.visualize_enhanced_clusters(output_folder)
 
     # Получаем рекомендации
     analyzer.get_enhanced_recommendations()
 
     # Сохраняем результаты в Excel
     analyzer.save_results_to_excel(output_folder)
+    analyzer.save_cluster_interpretation_to_excel(output_folder)
 
     return supplier_clusters, analyzer
