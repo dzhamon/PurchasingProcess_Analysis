@@ -37,6 +37,28 @@ company_mapped_grouped = {
 	'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ' : ['ОМСКИЙ ЗАВОД ЗАПОРНОЙ АРМАТУРЫ ООО'],
 	'Омский з-д запорн армат' :['ООО «Омский завод запорной арматуры»', 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ']
 }
+
+# Функция обрезки нежелательных фпаз
+def normalize_winner_name(name: str) -> str:
+    """
+    Удаляет нежелательные подстроки из названия компании
+    и приводит строку к нормальному виду.
+    """
+    if not isinstance(name, str):
+        return name  # если NaN или не строка, возвращаем как есть
+
+    unwanted = ['не использовать дубль', '<не использовать>',
+				'не использовать', 'Не использовать дубль', 'Не использовать']
+
+    # удаляем каждую нежелательную подстроку
+    for phrase in unwanted:
+        name = name.replace(phrase, '')
+
+    # убираем лишние пробелы (в том числе внутри)
+    name = re.sub(r'\s+', ' ', name).strip()
+
+    return name
+
 company_lookup = {}
 for main_name, aliases in company_mapped_grouped.items():
 	for alias in aliases:
@@ -83,6 +105,9 @@ def cleanDataDF(data_df):
 				print(f"Нечисловых значений, которые не удалось преобразовать в столбце '{col}', не обнаружено.")
 		else:
 			print(f" Предупреждение: Числовой столбец '{col}' не найден.")
+
+	# Удалим в наименованиях поставщиков нежелательные фразы
+	data_df['winner_name'] = data_df['winner_name'].apply(normalize_winner_name)
 	
 	# Замена разных наименований одной компании-поставщика
 	data_df['winner_name'] = data_df['winner_name'].apply(normalize_company_name)
@@ -116,6 +141,9 @@ def clean_contract_data(df_c):
 	# Преобразуем колонку contract_signing_date и lot_end_date в формат datetime, игнорируя ошибки
 	df_c['contract_signing_date'] = pd.to_datetime(df_c['contract_signing_date'], format='%Y-%m-%d', errors='coerce')
 	df_c['lot_end_date'] = pd.to_datetime(df_c['lot_end_date'], format='%Y-%m-%d', errors='coerce')
+
+	# Удаляем из наименований поставщиков нежелательные фразы
+	df_c['counterparty_name'] = df_c['counterparty_name'].apply(normalize_winner_name())
 	
 	# замена разных написаний одной компании-поставщика
 	df_c['counterparty_name'] = df_c['counterparty_name'].apply(normalize_company_name)

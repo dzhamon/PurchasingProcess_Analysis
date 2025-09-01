@@ -7,7 +7,7 @@ import sys
 import os
 from PyQt5.QtCore import QCoreApplication
 from PyQt5.QtCore import Qt, QPoint
-from PyQt5.QtGui import QFont, QCursor
+from PyQt5.QtGui import QFont, QCursor, QFontDatabase
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -62,30 +62,92 @@ class MyTabWidget(QWidget):
         layout.addWidget(self.notebook)
         self.setLayout(layout)
 
-        # Инициализация QLabel для отображения подсказок
-        self.tooltip_label = QLabel(self)
-        self.tooltip_label.setStyleSheet(
-            "background-color: yellow; color: black; font-size: 12px; padding: 5px; border: 1px solid black;"
-        )
-        self.tooltip_label.hide()  # Скрываем по умолчанию
+         # Загрузка подсказок из JSON
+        self.tooltips_data = self.load_tooltips()
 
-        # Вызов метода setup_tabs с параметрами
-        self.setup_tabs()
+        print("Step 1 tooltips have loade")
 
-    def showTooltip(self, text, x=20, y=20):
         try:
-            # Устанавливаем текст подсказки и показываем ее в фиксированной позиции для отладки
-            self.tooltip_label.setText(text)
-            cursor_pos = QCursor.pos()
-            self.tooltip_label.move(self.mapFromGlobal(cursor_pos + QPoint(x, y)))
-            self.tooltip_label.adjustSize()
-            self.tooltip_label.show()
-        except Exception as error:
-            print("Ошибка при отображении подсказки:", error)
+            self.setup_standard_tooltips()
+            print("Шаг 2 Стили подсказок применены")
+        except Exception as e:
+            print(f"Ошибка в standart_tootips: {e}")
 
-    def hideTooltip(self):
-        # Скрываем виджет подсказки
-        self.tooltip_label.hide()
+        self.setStyleSheet("""
+                    QTabBar::tab {
+                        font-size: 11pt;      /* размер текста */
+                        min-height: 30px;     /* высота вкладки */
+                        padding: 6px 20px;    /* отступы вокруг текста */
+                    }
+                """)
+
+        # Добавление вкладок
+        try:
+            self.setup_tabs()
+            print("Шаг 4 Вкладки созданы")
+        except Exception as e:
+            print(f"Ошибка в setup_tabs: {e}")
+
+        # Добавляем подсказки к вкладкам
+        try:
+            self.apply_tooltips_to_tabs()
+            print("Шаг 5: Подсказки применены")  # ДИАГНОСТИКА
+        except Exception as e:
+            print(f"Ошибка в apply_tooltips_to_tabs: {e}")
+
+    def load_tooltips(self):
+        """Загрузка подсказок из JSON файла"""
+        try:
+            import json
+            with open('menu_hints.json', 'r', encoding='utf-8') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Ошибка загрузки подсказок: {e}")
+            return {}
+
+    # Метод получения подсказки
+    def get_tooltip(self, category, item_key):
+        """Получить подсказку для конкретного элемента"""
+        return self.tooltips_data.get(category, {}).get(item_key, "Подсказка не найдена")
+
+    def setup_standard_tooltips(self):
+        """ Настраивает глобальный стиль для всех подсказок QToolTip """
+        from PyQt5.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            # настраиваем стили
+            tooltip_style = """
+            QToolTip {
+                background-color: yellow;
+                color: black;
+                font-size: 12px;
+                border: 1px solid black;
+                padding: 5px;
+                border-radius: 3px;
+                max-width: 400px
+            }
+            """
+            # добавляем или обновляем стиль для подсказок
+            # app.setStyleSheet(app.styleSheet() + tooltip_style)
+
+    # Прменение подсказки к вкладкам
+    def apply_tooltips_to_tabs(self):
+        """Применение подсказок к вкладкам из JSON"""
+
+        # Подсказки для вкладок (можно настроить под ваши нужды)
+        tab_tooltips = {
+            "Анализ Лотов": self.get_tooltip("Анализ данных по Лотам", "menu_item_1"),
+            "Анализ Контрактов": self.get_tooltip("Анализ данных по Контрактам", "menu_item_1"),
+        }
+
+        # Применяем подсказки к вкладкам
+        for i in range(self.notebook.count()):
+            tab_text = self.notebook.tabText(i)
+            tooltip_text = tab_tooltips.get(tab_text, "Подсказка не найдена")
+            self.notebook.setTabToolTip(i, tooltip_text)  # Используем setTabToolTip
+
+        # Общая подсказка для виджета вкладок
+        self.notebook.setToolTip("Система анализа данных по закупкам")
 
     def handle_analysis_data(self, df):
         """Слот для получения данных из Tab2"""
@@ -202,10 +264,10 @@ class Window(QMainWindow):
         # --- КОНЕЦ ИНИЦИАЛИЗАЦИИ И ПОДКЛЮЧЕНИЯ ---
 
         # Настройка главного окна
-        self.setFont(QFont("Arial", 12))
+        # self.setFont(QFont("Arial", 12))
         self.setWindowTitle("Анализ закупочных процессов")
         self.resize(1200, 600)
-        self.setFont(QFont("Arial", 11))
+        self.setFont(QFont("Arial", 12))
 
         # Создание меню и действий
         self._createActions()
@@ -221,12 +283,6 @@ class Window(QMainWindow):
         self.status_bar.addPermanentWidget(self.progress_bar)
         self.setStatusBar(self.status_bar)
 
-    # УДАЛЕНЫ ВСЕ МЕТОДЫ ДЛЯ РАБОТЫ С ПОТОКАМИ:
-    # - start_analysis_thread
-    # - on_thread_finished
-    # - closeEvent с остановкой потоков
-    # - AnalysisThread класс полностью убран
-
     def update_tab2_data(self, filtered_df):
         self.tab_widget.notebook.widget(1).update_data(filtered_df)
 
@@ -237,6 +293,7 @@ class Window(QMainWindow):
 
     def _createMenuBar(self):
         menuBar = self.menuBar()
+        menuBar.setStyleSheet("QMenuBar { font-family: 'Times New Roman'; font-size: 12pt; }")
 
         # Меню Файл
         fileMenu = menuBar.addMenu("Ввод основной информации и выход из программы")
@@ -253,6 +310,7 @@ class Window(QMainWindow):
         analysisMenu.addAction(self.analyzeKPIAction)
         analysisMenu.addAction(self.efficiency_analyses_action)
         analysisMenu.addAction(self.suppliers_by_unit_price_action)
+
         # analysisMenu.addAction(self.find_cross_discipline_lotsAction)
         # analysisMenu.addAction(self.lotcount_peryearAction)
 
@@ -270,16 +328,20 @@ class Window(QMainWindow):
         analysisMenuWarehouses = menuBar.addMenu("Анализ данных по Складам")
         analysisMenuWarehouses.addAction(self.warehouseStatistics)
 
-    def setActionTooltip(self, action, group, hint_key, x=0, y=0):
+    def setActionTooltip(self, action, group, hint_key):
+        """Получает текст подсказки и устанавливает его для QAction"""
+        # hint_text = self.menu_hints.get(group, {}).get(
+        #     hint_key, "Нет инструкции для этого пункта"
+        # )
         hint_text = self.menu_hints.get(group, {}).get(
-            hint_key, "Нет инструкции для этого пункта"
+            hint_key, "---ДЕФОЛТНАЯ ПОДСКАЗКА---"  # Изменил для наглядности
         )
-        action.hovered.connect(lambda: self.tab_widget.showTooltip(hint_text))
-        action.triggered.connect(self.tab_widget.hideTooltip)
 
-    def leaveEvent(self, event):
-        self.tab_widget.hideTooltip()
-        super().leaveEvent(event)
+        # --- ДИАГНОСТИЧЕСКАЯ СТРОКА ---
+        # Добавьте эту строку, чтобы увидеть результат в консоли
+        print(f"Для '{action.text()}': Устанавливается подсказка -> '{hint_text}'")
+
+        action.setToolTip(hint_text)
 
     def _createActions(self):
         # Действия для меню Файл
@@ -293,105 +355,83 @@ class Window(QMainWindow):
         self.setActionTooltip(
             self.analyzeMonthlyExpensesAction,
             "Анализ данных по Лотам",
-            "menu_item_1",
-            x=20,
-            y=20,
+            "Анализ месячных затрат",
         )
 
-        self.analyzeTopSuppliersAction = QAction("Анализ топ-10 поставщиков", self)
+        self.analyzeTopSuppliersAction = QAction("Анализ top-10 поставщиков", self)
         self.setActionTooltip(
             self.analyzeTopSuppliersAction,
             "Анализ данных по Лотам",
-            "menu_item_2",
-            x=20,
-            y=20,
+            "Анализ top-10 поставщиков",
         )
 
         self.networkanalyseAction = QAction("Сетевой анализ проектов", self)
         self.setActionTooltip(
             self.networkanalyseAction,
             "Анализ данных по Лотам",
-            "menu_item_3",
-            x=20,
-            y=20,
+            "Сетевой анализ проектов",
         )
         
         self.analyzeKPIAction = QAction("Анализ KPI", self)
         self.setActionTooltip(
             self.analyzeKPIAction,
             "Анализ данных по Лотам",
-            "menu_item_4", x=20, y=20
+            "Расчет показателей KPI",
         )
         
-        self.suppliersfriquencyAction = QAction("Анализ частоты поставщиков", self)
+        self.suppliersfriquencyAction = QAction("Анализ эффективности исполнителей", self)
         self.setActionTooltip(
             self.suppliersfriquencyAction,
             "Анализ данных по Лотам",
-            "menu_item_4",
-            x=20,
-            y=20,
+            "Анализ эффективности исполнителей",
         )
 
-        self.efficiency_analyses_action = QAction("Анализ эффективности исполнителей и поиск аномалий", self)
+        self.efficiency_analyses_action = QAction("Анализ эффективности и поиск аномалий", self)
         self.setActionTooltip(
             self.efficiency_analyses_action,
             "Анализ данных по Лотам",
-            "menu_item_5",
-            x=20,
-            y=20,
+            "Анализ эффективности и поиск аномалий",
         )
-        self.suppliers_by_unit_price_action = QAction("Ранжирование Поставщиков по цене за единицу товара", self)
+        self.suppliers_by_unit_price_action = QAction("Ранжирование Поставщиков", self)
         self.setActionTooltip(
             self.suppliers_by_unit_price_action,
             "Анализ данных по Лотам",
-            "menu_item_6",
-            x=20,
-            y=20,
+            "Ранжирование Поставщиков",
         )
-        # self.find_cross_discipline_lotsAction = QAction("Поиск и анализ лотов общих для разных дисциплин", self)
-        # self.setActionTooltip(
-        #     self.find_cross_discipline_lotsAction,
-        #     "Анализ данных по Лотам",
-        #     "menu_item_9",
-        #     x=20,
-        #     y=20,
-        # )
+        self.find_cross_discipline_lotsAction = QAction("Анализ лотов общих для разных дисциплин", self)
+        self.setActionTooltip(
+            self.find_cross_discipline_lotsAction,
+            "Анализ данных по Лотам",
+            "Анализ лотов общих для разных дисциплин",
+        )
 
-        # self.lotcount_peryearAction = QAction("Количество лотов по дисциплинам по-квартально", self)
-        # self.setActionTooltip(
-        #     self.lotcount_peryearAction,
-        #     "Анализ данных по Лотам",
-        #     "menu_item_",
-        #     x=20,
-        #     y=20,
-        # )
+        self.lotcount_peryearAction = QAction("Количество лотов по дисциплинам по-квартально", self)
+        self.setActionTooltip(
+            self.lotcount_peryearAction,
+            "Анализ данных по Лотам",
+            "menu_item_",
+        )
 
         # Действия для меню Анализ данных по Контрактам
         self.analyzeClasterAction = QAction("Кластерный анализ", self)
         self.setActionTooltip(
             self.analyzeClasterAction,
             "Анализ данных по Контрактам",
-            "menu_item_1",
-            x=450,
-            y=20,
+            "Классификация поставщиков",
         )
 
         self.trend_analyses_action = QAction("Тренд - анализ", self)
         self.setActionTooltip(
             self.trend_analyses_action,
             "Анализ данных по Контрактам",
-            "menu_item_2",
-            x=450,
-            y=20,
+            "Тренд-анализ",
         )
 
         self.prophet_arima_action = QAction("Моделирование и прогнозирование", self)
         self.setActionTooltip(
             self.prophet_arima_action,
             "Анализ данных по Контрактам",
-            "menu_item_3",
-            x=450,
-            y=20,
+            "Моделирование и прогнозирование",
         )
 
         self.contracts_less_dates_action = QAction(
@@ -401,16 +441,12 @@ class Window(QMainWindow):
             self.contracts_less_dates_action,
             "Анализ данных по Контрактам",
             "menu_item_4",
-            x=450,
-            y=20,
         )
         self.herfind_hirshman_action = QAction("Метод Херфиндаля-Хиршмана", self)
         self.setActionTooltip(
             self.herfind_hirshman_action,
             "Анализ данных по Контрактам",
-            "menu_item_5",
-            x=450,
-            y=20,
+            "Метод Херфиндаля-Хиршмана",
         )
 
         # Определение действия для запуска анализа альтернативных поставщиков
@@ -419,16 +455,16 @@ class Window(QMainWindow):
         )
         self.setActionTooltip(
             self.run_alternative_suppliers_action,
+            "Анализ данных по Контрактам",
             "Анализ альтернативных поставщиков",
-            "menu_item_6",
-            x=450,
-            y=20,
         )
 
         # Действия для меню Анализ данных по Складам
-        self.warehouseStatistics = QAction(
-            "Расчет остатков сум на складах по валютам", self
-        )
+        self.warehouseStatistics = QAction("Расчет остатков сум на складах по валютам", self)
+        self.setActionTooltip(self.warehouseStatistics,
+                              "Анализ данных по Складам",
+                              "Остатки сумм на складах по валютам",
+                              )
 
     def _connectActions(self):
         # Подключение сигналов к действиям
@@ -1037,33 +1073,63 @@ class Window(QMainWindow):
         self.show_progress(100)
         self.hide_progress()
 
-
 if __name__ == "__main__":
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
 
-    # Устанавливаем шрифты и тему
-    set_fonts(app)
+    # 🔹 Устанавливаем коэффициент масштабирования (например, 1.5 = 150%)
+    app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    QFontDatabase.addApplicationFont("C:/Windows/Fonts/arial.ttf")  # пример, если нужен конкретный шрифт
+    app.setFont(QFont("Arial", 12))  # здесь можешь менять размер под свой монитор
+
     # Загружаем стили из CSS-файла
     stylesheet = load_stylesheet("styles_black.qss")
     app.setStyleSheet(stylesheet)
-    # Установим шрифт для отображения подсказок
+
+    # Установим шрифт для подсказок
     QToolTip.setFont(QFont("SansSerif", 10))
+
     # Установим стиль приложения
     app.setStyle("Fusion")
     set_light_theme(app)
 
-    app.setAttribute(
-        Qt.AA_EnableHighDpiScaling, True
-    )  # Включить поддержку высокого разрешения
-    app.setAttribute(
-        Qt.AA_UseHighDpiPixmaps, True
-    )  # Включить использование DPI картинок
-    app.setAttribute(
-        Qt.AA_DisableWindowContextHelpButton, False
-    )  # Активировать tooltips
-
     window = Window()
     window.show()
-    sys.exit(app.exec_())
+
+    app.exec_()
+
+
+
+# if __name__ == "__main__":
+#     app = QApplication.instance()
+#     if app is None:
+#         app = QApplication(sys.argv)
+#
+#     # Устанавливаем шрифты и тему
+#     set_fonts(app)
+#     # Загружаем стили из CSS-файла
+#     stylesheet = load_stylesheet("styles_black.qss")
+#     app.setStyleSheet(stylesheet)
+#     # Установим шрифт для отображения подсказок
+#     QToolTip.setFont(QFont("SansSerif", 10))
+#     # Установим стиль приложения
+#     app.setStyle("Fusion")
+#     set_light_theme(app)
+#
+#     app.setAttribute(
+#         Qt.AA_EnableHighDpiScaling, True
+#     )  # Включить поддержку высокого разрешения
+#     app.setAttribute(
+#         Qt.AA_UseHighDpiPixmaps, True
+#     )  # Включить использование DPI картинок
+#     app.setAttribute(
+#         Qt.AA_DisableWindowContextHelpButton, False
+#     )  # Активировать tooltips
+#
+#     window = Window()
+#     window.show()
+#     # sys.exit(app.exec_())
+#     app.exec_()
+
