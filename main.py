@@ -61,94 +61,32 @@ class MyTabWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.notebook)
         self.setLayout(layout)
+        
+        # Инициализация QLabel для отображения подсказок
+        self.tooltip_label = QLabel(self)
+        self.tooltip_label.setStyleSheet(
+            "background-color: yellow; color: black; font-size: 12px; padding: 5px; border: 1px solid black;"
+        )
+        self.tooltip_label.hide() # Скрываем по умолчанию
 
-         # Загрузка подсказок из JSON
-        self.tooltips_data = self.load_tooltips()
-
-        print("Step 1 tooltips have loade")
-
+         # Вызов метода setup_tabs
+        self.setup_tabs()
+        
+    def showTooltip(self, text, x=20, y=20):
         try:
-            self.setup_standard_tooltips()
-            print("Шаг 2 Стили подсказок применены")
-        except Exception as e:
-            print(f"Ошибка в standart_tootips: {e}")
+            # Устанавливаем текст подсказки и показываем ее в фиксированной позиции для отладки
+            self.tooltip_label.setText(text)
+            cursor_pos = QCursor.pos()
+            self.tooltip_label.move(self.mapFromGlobal(cursor_pos + QPoint(x, y)))
+            self.tooltip_label.adjustSize()
+            self.tooltip_label.show()
+        except Exception as error:
+            print("Ошибка при отображении подсказки:", error)
 
-        self.setStyleSheet("""
-                    QTabBar::tab {
-                        font-size: 11pt;      /* размер текста */
-                        min-height: 30px;     /* высота вкладки */
-                        padding: 6px 20px;    /* отступы вокруг текста */
-                    }
-                """)
-
-        # Добавление вкладок
-        try:
-            self.setup_tabs()
-            print("Шаг 4 Вкладки созданы")
-        except Exception as e:
-            print(f"Ошибка в setup_tabs: {e}")
-
-        # Добавляем подсказки к вкладкам
-        try:
-            self.apply_tooltips_to_tabs()
-            print("Шаг 5: Подсказки применены")  # ДИАГНОСТИКА
-        except Exception as e:
-            print(f"Ошибка в apply_tooltips_to_tabs: {e}")
-
-    def load_tooltips(self):
-        """Загрузка подсказок из JSON файла"""
-        try:
-            import json
-            with open('menu_hints.json', 'r', encoding='utf-8') as file:
-                return json.load(file)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Ошибка загрузки подсказок: {e}")
-            return {}
-
-    # Метод получения подсказки
-    def get_tooltip(self, category, item_key):
-        """Получить подсказку для конкретного элемента"""
-        return self.tooltips_data.get(category, {}).get(item_key, "Подсказка не найдена")
-
-    def setup_standard_tooltips(self):
-        """ Настраивает глобальный стиль для всех подсказок QToolTip """
-        from PyQt5.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app:
-            # настраиваем стили
-            tooltip_style = """
-            QToolTip {
-                background-color: yellow;
-                color: black;
-                font-size: 12px;
-                border: 1px solid black;
-                padding: 5px;
-                border-radius: 3px;
-                max-width: 400px
-            }
-            """
-            # добавляем или обновляем стиль для подсказок
-            # app.setStyleSheet(app.styleSheet() + tooltip_style)
-
-    # Прменение подсказки к вкладкам
-    def apply_tooltips_to_tabs(self):
-        """Применение подсказок к вкладкам из JSON"""
-
-        # Подсказки для вкладок (можно настроить под ваши нужды)
-        tab_tooltips = {
-            "Анализ Лотов": self.get_tooltip("Анализ данных по Лотам", "menu_item_1"),
-            "Анализ Контрактов": self.get_tooltip("Анализ данных по Контрактам", "menu_item_1"),
-        }
-
-        # Применяем подсказки к вкладкам
-        for i in range(self.notebook.count()):
-            tab_text = self.notebook.tabText(i)
-            tooltip_text = tab_tooltips.get(tab_text, "Подсказка не найдена")
-            self.notebook.setTabToolTip(i, tooltip_text)  # Используем setTabToolTip
-
-        # Общая подсказка для виджета вкладок
-        self.notebook.setToolTip("Система анализа данных по закупкам")
-
+    def hideTooltip(self):
+        # скрываем виджет подсказки
+        self.tooltip_label.hide()
+    
     def handle_analysis_data(self, df):
         """Слот для получения данных из Tab2"""
         self._current_filtered_df = df.copy()
@@ -264,7 +202,6 @@ class Window(QMainWindow):
         # --- КОНЕЦ ИНИЦИАЛИЗАЦИИ И ПОДКЛЮЧЕНИЯ ---
 
         # Настройка главного окна
-        # self.setFont(QFont("Arial", 12))
         self.setWindowTitle("Анализ закупочных процессов")
         self.resize(1200, 600)
         self.setFont(QFont("Arial", 12))
@@ -310,9 +247,8 @@ class Window(QMainWindow):
         analysisMenu.addAction(self.analyzeKPIAction)
         analysisMenu.addAction(self.efficiency_analyses_action)
         analysisMenu.addAction(self.suppliers_by_unit_price_action)
-
-        # analysisMenu.addAction(self.find_cross_discipline_lotsAction)
-        # analysisMenu.addAction(self.lotcount_peryearAction)
+        analysisMenu.addAction(self.find_cross_discipline_lotsAction)
+        analysisMenu.addAction(self.lotcount_peryearAction)
 
         # Меню Анализ по Контрактам
         analysisMenuContract = menuBar.addMenu("Анализ данных по Контрактам")
@@ -328,20 +264,18 @@ class Window(QMainWindow):
         analysisMenuWarehouses = menuBar.addMenu("Анализ данных по Складам")
         analysisMenuWarehouses.addAction(self.warehouseStatistics)
 
-    def setActionTooltip(self, action, group, hint_key):
+    def setActionTooltip(self, action, group, hint_key, x=0, y=0):
         """Получает текст подсказки и устанавливает его для QAction"""
-        # hint_text = self.menu_hints.get(group, {}).get(
-        #     hint_key, "Нет инструкции для этого пункта"
-        # )
         hint_text = self.menu_hints.get(group, {}).get(
-            hint_key, "---ДЕФОЛТНАЯ ПОДСКАЗКА---"  # Изменил для наглядности
+            hint_key, "Нет инструкции для этого пункта"
         )
+        action.hovered.connect(lambda: self.tab_widget.showTooltip(hint_text))
+        action.triggered.connect(self.tab_widget.hideTooltip)
+        
+    def leaveEvent(self, event):
+        self.tab_widget.hideTooltip()
+        super().leaveEvent(event)
 
-        # --- ДИАГНОСТИЧЕСКАЯ СТРОКА ---
-        # Добавьте эту строку, чтобы увидеть результат в консоли
-        print(f"Для '{action.text()}': Устанавливается подсказка -> '{hint_text}'")
-
-        action.setToolTip(hint_text)
 
     def _createActions(self):
         # Действия для меню Файл
