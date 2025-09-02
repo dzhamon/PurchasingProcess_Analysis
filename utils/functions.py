@@ -129,8 +129,9 @@ def clean_contract_data(df_c):
 		df_c['unit_price'].astype(str).str.replace(' ', '', regex=False).str.replace(',', '.', regex=False),
 		errors='coerce')
 	# Преобразуем значения в числовой формат, несовместимые значения станут NaN
+	df_c["unit_price"] = df_c["unit_price"].astype("object")
 	df_c['unit_price'] = pd.to_numeric(df_c['unit_price'], errors='coerce')
-	df_c.fillna(df_c['unit_price'].median(), inplace=True)  # Заполняем пропущенные значения медианой
+	df_c['unit_price'] = df_c['unit_price'].fillna(df_c['unit_price'].median())  # Заполняем пропущенные значения медианой
 	
 	# Удаляем строки с NaN или нулевыми значениями в 'total_price' и 'unit_price'
 	df_c = df_c.dropna(subset=['total_contract_amount', 'product_amount', 'unit_price', 'quantity'])
@@ -143,7 +144,7 @@ def clean_contract_data(df_c):
 	df_c['lot_end_date'] = pd.to_datetime(df_c['lot_end_date'], format='%Y-%m-%d', errors='coerce')
 
 	# Удаляем из наименований поставщиков нежелательные фразы
-	df_c['counterparty_name'] = df_c['counterparty_name'].apply(normalize_winner_name())
+	df_c['counterparty_name'] = df_c['counterparty_name'].apply(normalize_winner_name)
 	
 	# замена разных написаний одной компании-поставщика
 	df_c['counterparty_name'] = df_c['counterparty_name'].apply(normalize_company_name)

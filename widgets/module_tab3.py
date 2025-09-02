@@ -100,12 +100,21 @@ class Tab3Widget(QWidget):
 					WHERE DATE(contract_signing_date) BETWEEN DATE(?) AND DATE(?);
 					"""
 			# Загрузка данных в датафрейм
-			self.contract_df = pd.read_sql_query(query, conn, dtype={'lot_number': 'string', 'discipline': 'string',
-			                                                         'contract_name': 'string', 'executor_dak': 'string',
-			                                                         'counterparty_name': 'string',
-			                                                         'product_name': 'string',
-			                                                         'contract_currency': 'string'},
-			                                     params=(start_date, end_date))
+			self.contract_df = pd.read_sql_query(query, conn, dtype={
+				'lot_number': 'Int64', 'lot_end_date': 'string', 'contract_number':	'string',
+				'contract_signing_date': 'string',  'contract_name': 'string',
+				'executor_dak':	'string', 'counterparty_name': 'string',
+				'product_name':	'string',	'supplier_unit': 'string',
+				'quantity':	'float64', 'unit':	'string',
+				'unit_price': 'float64',  'product_amount': 'float64',
+				'additional_expenses': 'float64', 	'total_contract_amount': 'float64',
+				'contract_currency': 'string', 'delivery_conditions':	'string',
+				'payment_conditions': 'string', 'delivery_time_days':	'string',
+				'discipline': 'string',
+			}, params=(start_date, end_date))
+			
+			# очистка данных DtaFrame contract_df
+			self.contract_df = clean_contract_data(self.contract_df)
 			
 			# Создаем новый датафрейм, в который копируем только что скачанный contract_df.
 			# Он понадобится в дальнейшем анализе - методе Херфиндаля-Хиршмана при поиске альтернативных поставщиков
@@ -118,15 +127,14 @@ class Tab3Widget(QWidget):
 			
 		# теперь подтягиваем соответствующие лоты и project_name из data_kp
 		query_kp = "SELECT lot_number, project_name FROM data_kp"
-		kp_df = pd.read_sql(query_kp, conn,  dtype={'lot_number': 'string', 'project_name': 'string'})
+		kp_df = pd.read_sql(query_kp, conn,  dtype={'lot_number': 'Int64', 'project_name': 'string'})
 		
 		# удалим дубликаты из kp_df
 		kp_unique_projects = kp_df[['lot_number', 'project_name']].drop_duplicates(subset=['lot_number'])
 		
 		# закрыть соединение с базой данных
 		conn.close()
-		# очистка данных contract_df
-		self.contract_df = clean_contract_data(self.contract_df)  # очистка данных полученного df
+		
 		cont_df = self.contract_df.copy()
 		
 		# объединяем данные
