@@ -308,7 +308,14 @@ def analyze_top_suppliers(parent_widget, df):
 			}
 			for sheet_name, data in sheets_data.items():
 				worksheet = writer.sheets[sheet_name]
-				for col_num, value in enumerate(data.columns.values):
+				# Создаем список заголовков, включая имя столбца с поставщиками
+				if sheet_name in ["Топ-10 поставщиков", "По валютам", "Динамика по месяцам", "Статистика"]:
+				    headers = ["Поставщик"] + list(data.columns)
+				else:
+				    headers = list(data.columns)
+				
+				# Записываем все заголовки
+				for col_num, value in enumerate(headers):
 					worksheet.write(0, col_num, value, header_format)
 					
 					# Числовое форматирование
@@ -402,20 +409,18 @@ def analyze_top_suppliers(parent_widget, df):
 				"Ошибка",
 				f"Произошла ошибка при анализе поставщиков:\n\n{str(e)}"
 			))
-	print(f"Error in analyze_top_suppliers: {traceback.format_exc()}")
-
 
 # -----------------------------------------------------
 
 """ Анализ Частота появления Поставщика"""
-
-
 # DataFrame называется df и содержит столбцы 'discipline', 'actor_name', 'winner_name'
 
 # Добавление процентного соотношения
-def analyze_supplier_frequency(df, output_dir="D:/Analysis-Results/Supplier-Frequency", threshold=1):
+def analyze_supplier_frequency(df):
 	import os
 	import matplotlib.pyplot as plt
+	output_dir="D:/Analysis-Results/Supplier-Frequency"
+	# threshold = 1
 	os.makedirs(output_dir, exist_ok=True)
 	
 	# Группировка данных

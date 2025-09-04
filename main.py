@@ -1034,36 +1034,3 @@ if __name__ == "__main__":
 
     app.exec_()
 
-
-
-# if __name__ == "__main__":
-#     app = QApplication.instance()
-#     if app is None:
-#         app = QApplication(sys.argv)
-#
-#     # Устанавливаем шрифты и тему
-#     set_fonts(app)
-#     # Загружаем стили из CSS-файла
-#     stylesheet = load_stylesheet("styles_black.qss")
-#     app.setStyleSheet(stylesheet)
-#     # Установим шрифт для отображения подсказок
-#     QToolTip.setFont(QFont("SansSerif", 10))
-#     # Установим стиль приложения
-#     app.setStyle("Fusion")
-#     set_light_theme(app)
-#
-#     app.setAttribute(
-#         Qt.AA_EnableHighDpiScaling, True
-#     )  # Включить поддержку высокого разрешения
-#     app.setAttribute(
-#         Qt.AA_UseHighDpiPixmaps, True
-#     )  # Включить использование DPI картинок
-#     app.setAttribute(
-#         Qt.AA_DisableWindowContextHelpButton, False
-#     )  # Активировать tooltips
-#
-#     window = Window()
-#     window.show()
-#     # sys.exit(app.exec_())
-#     app.exec_()
-
