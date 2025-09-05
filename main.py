@@ -574,17 +574,21 @@ class Window(QMainWindow):
             self.progress_bar.show()
             self.show_progress(10)
 
-            from models_analyses.analysis import analyze_supplier_frequency
+            from models_analyses.analysis import (
+                analyze_supplier_frequency, analyze_supplier_behavior)
 
             analyze_supplier_frequency(self._current_filtered_df)
             self.show_progress(100)
             self.hide_progress()
+            
+            analyze_supplier_behavior(self._current_filtered_df)
 
             QMessageBox.information(
                 self, "Завершено", "Анализ частоты поставщиков завершен!"
             )
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
+
 
     def run_network_analysis(self):
         # Метод для сетевого анализа

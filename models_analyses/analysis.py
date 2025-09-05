@@ -420,7 +420,7 @@ def analyze_supplier_frequency(df):
 	import os
 	import matplotlib.pyplot as plt
 	output_dir="D:/Analysis-Results/Supplier-Frequency"
-	# threshold = 1
+	threshold = 1
 	os.makedirs(output_dir, exist_ok=True)
 	
 	# Группировка данных
@@ -446,15 +446,76 @@ def analyze_supplier_frequency(df):
 		# Дополнительный график: топ-10 поставщиков в дисциплине
 		top_10 = group_discipline.groupby('winner_name')['win_count'].sum().nlargest(10)
 		if not top_10.empty:
-			fig, ax = plt.subplots(figsize=(10, 6))
+			fig, ax = plt.subplots(figsize=(14, 10))
 			top_10.plot(kind='bar', ax=ax, color='skyblue')
 			ax.set_title(f'Top 10 Suppliers in {discipline}')
 			ax.set_ylabel('Total Wins')
+			plt.subplots_adjust(bottom=0.2, top=0.9)
 			plt.tight_layout()
 			plt.savefig(os.path.join(discipline_dir, f"top_10_suppliers_{discipline}.png"))
 			plt.close()
 	
 	return top_suppliers
+
+def analyze_supplier_behavior(df):
+	
+    output_dir = "D:/Analysis-Results/Supplier-Behavior"
+
+    # Убедимся, что столбцы с датами имеют правильный формат
+    df["open_date"] = pd.to_datetime(df["open_date"])
+    df["close_date"] = pd.to_datetime(df["close_date"])
+
+    # Рассчитываем продолжительность торгов в днях
+    df["duration_days"] = (df["close_date"] - df["open_date"]).dt.days
+
+    # Создаем уникальное имя файла
+    os.makedirs(output_dir, exist_ok=True)
+    file_path = os.path.join(output_dir, "bidding_duration_analysis.xlsx")
+
+    # Группируем данные, чтобы получить среднюю продолжительность для каждой пары (actor, winner)
+    grouped_duration = (
+        df.groupby(["discipline", "actor_name", "winner_name"])["duration_days"]
+        .agg(["count", "mean"])
+        .reset_index()
+    )
+    grouped_duration.columns = [
+        "discipline",
+        "actor_name",
+        "winner_name",
+        "win_count",
+        "average_duration",
+    ]
+
+    # Рассчитываем общую среднюю продолжительность торгов по каждой дисциплине
+    discipline_avg = df.groupby("discipline")["duration_days"].mean().reset_index()
+    discipline_avg.columns = ["discipline", "overall_avg_duration"]
+
+    # Объединяем два датафрейма для сравнения
+    analysis_df = pd.merge(grouped_duration, discipline_avg, on="discipline")
+
+    # Рассчитываем разницу в продолжительности
+    analysis_df["duration_difference"] = (
+        analysis_df["average_duration"] - analysis_df["overall_avg_duration"]
+    )
+
+    # Сортируем по разнице, чтобы найти самые большие отклонения
+    analysis_df = analysis_df.sort_values(by="duration_difference", ascending=True)
+
+    # Сохраняем результат в Excel
+    with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+        analysis_df.to_excel(writer, index=False, sheet_name="Duration Analysis")
+
+        # Форматирование для удобства
+        workbook = writer.book
+        worksheet = writer.sheets["Duration Analysis"]
+        header_format = workbook.add_format({"bold": True, "text_wrap": True})
+
+        for col_num, value in enumerate(analysis_df.columns.values):
+            worksheet.write(0, col_num, value, header_format)
+
+    print(f"Анализ продолжительности торгов сохранен в {file_path}")
+    return
+
 
 
 def network_analysis(parent_widget, df):
