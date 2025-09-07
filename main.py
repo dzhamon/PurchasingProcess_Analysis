@@ -574,14 +574,20 @@ class Window(QMainWindow):
             self.progress_bar.show()
             self.show_progress(10)
 
-            from models_analyses.analysis import (
-                analyze_supplier_frequency, analyze_supplier_behavior)
+            from models_analyses.analyze_actors_efficients import AnalyzeActorsEfficients
+            # from models_analyses.analysis import (
+            #     analyze_supplier_frequency, analyze_supplier_behavior)
+            # analyze_supplier_frequency(self._current_filtered_df)
+            # self.show_progress(100)
+            # self.hide_progress()
+            # analyze_supplier_behavior(self._current_filtered_df)
 
-            analyze_supplier_frequency(self._current_filtered_df)
-            self.show_progress(100)
-            self.hide_progress()
-            
-            analyze_supplier_behavior(self._current_filtered_df)
+            # создаем экземпляр класса
+            analyzer = AnalyzeActorsEfficients(self._current_filtered_df)
+
+            # вызываем методы через созданный экземпляр
+            analyzer.analyze_supplier_frequency()
+            analyzer.analyze_supplier_behavior()
 
             QMessageBox.information(
                 self, "Завершено", "Анализ частоты поставщиков завершен!"
