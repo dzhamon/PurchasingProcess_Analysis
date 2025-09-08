@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import networkx as nx
 import numpy as np
+from utils.config import BASE_DIR
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from scipy import stats
@@ -27,11 +28,11 @@ def analyze_and_visualize_suppliers(parent_widget, df):
         QMessageBox.warning(parent_widget, "Ошибка", "Не найдено проектов в DataFrame.")
         return
 
-    output_folder = os.path.join(os.getcwd(), "network_graphs")
-    os.makedirs(output_folder, exist_ok=True)
+    OUTPUT_DIR = os.path.join(BASE_DIR,"network_graphs")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Создаем файл excel для записи результатов
-    excel_output_path = os.path.join(os.getcwd(), "project_analysis_results.xlsx")
+    excel_output_path = os.path.join(OUTPUT_DIR, "project_analysis_results.xlsx")
     with pd.ExcelWriter(excel_output_path, engine='openpyxl') as writer:
         for project_name in unique_projects:
             print(f"Анализ проекта: {project_name}")
@@ -173,13 +174,13 @@ def analyze_and_visualize_suppliers(parent_widget, df):
             )
             
             file_name = f"common_suppliers_network_{project_name}.png"
-            file_path = os.path.join(output_folder, file_name)
+            file_path = os.path.join(OUTPUT_DIR, file_name)
             plt.savefig(file_path, dpi=300, bbox_inches="tight")
             plt.close()
             
     QMessageBox.information(
         parent_widget,
         "Сообщение",
-        f"Анализ завершен. Графики для каждого проекта сохранены в папке:\n{output_folder}",
+        f"Анализ завершен. Графики для каждого проекта сохранены в папке:\n{OUTPUT_DIR}",
     )
     return

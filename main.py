@@ -334,7 +334,7 @@ class Window(QMainWindow):
         )
         self.find_cross_discipline_lotsAction = QAction("Анализ лотов общих для разных дисциплин", self)
         self.setActionTooltip(
-            self.find_cross_discipline_lotsAction,
+            self.find_cross_discipline_lotsAction, # Этот модуль совместно с grapf_network_analysis собрать в отдельный class
             "Анализ данных по Лотам",
             "Анализ лотов общих для разных дисциплин",
         )
@@ -575,12 +575,6 @@ class Window(QMainWindow):
             self.show_progress(10)
 
             from models_analyses.analyze_actors_efficients import AnalyzeActorsEfficients
-            # from models_analyses.analysis import (
-            #     analyze_supplier_frequency, analyze_supplier_behavior)
-            # analyze_supplier_frequency(self._current_filtered_df)
-            # self.show_progress(100)
-            # self.hide_progress()
-            # analyze_supplier_behavior(self._current_filtered_df)
 
             # создаем экземпляр класса
             analyzer = AnalyzeActorsEfficients(self._current_filtered_df)

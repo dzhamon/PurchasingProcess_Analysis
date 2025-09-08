@@ -412,104 +412,6 @@ def analyze_top_suppliers(parent_widget, df):
 
 # -----------------------------------------------------
 
-def network_analysis(parent_widget, df):
-	"""
-	:param df: отфильтрованный датафрейм по одному проекту
-	:return: None
-	Использованы алгоритмы Fruchterman-Reingold Algorithm и kamada_kawai
-	"""
-	print('Запускается метод сетевого анализа и построения графов')
-	
-	# Преобразуем значения project_name в строки
-	df['project_name'] = df['project_name'].astype(str)
-	
-	# Извлечение уникальных значений для валют
-	unique_currencies = df['currency'].unique().tolist()
-	selected_project = df['project_name'].unique()[0]
-	
-	output_folder = 'D:/Analysis-Results/network_graphs'
-	os.makedirs(output_folder, exist_ok=True)
-	
-	# Список алгоритмов размещения
-	layouts = {
-		'spring': nx.spring_layout,
-		'kamada_kawai': nx.kamada_kawai_layout,
-	}
-	
-	# Перебираем все уникальные валюты для данного проекта
-	for currency in unique_currencies:
-		# Фильтрация данных по валюте
-		currency_data = df[df['currency'] == currency]
-		
-		# Извлечение уникальных дисциплин и поставщиков для текущей валюты
-		unique_disciplines = currency_data['discipline'].unique().tolist()
-		unique_suppliers = currency_data['winner_name'].unique().tolist()
-		
-		# Создание пустого графа для текущей валюты
-		G = nx.Graph()
-		
-		# Добавление узла для проекта (красный цвет)
-		G.add_node(selected_project, type='project', color='red')
-		
-		# Добавление узлов для дисциплин и поставщиков только для текущей валюты
-		G.add_nodes_from(unique_disciplines, type='discipline', color='green')
-		G.add_nodes_from(unique_suppliers, type='supplier', color='lightblue')
-		
-		# Добавление связей на основе данных проекта и текущей валюты
-		for _, row in currency_data.iterrows():
-			discipline = row['discipline']
-			supplier = row['winner_name']
-			
-			if pd.notna(discipline) and pd.notna(supplier):
-				# Добавляем связь проект - дисциплина
-				G.add_edge(selected_project, discipline)
-				# Добавляем связь дисциплина - поставщик
-				G.add_edge(discipline, supplier)
-		
-		# Перебираем все алгоритмы размещения
-		for layout_name, layout_func in layouts.items():
-			print(f"Построение графика для {currency} с размещением: {layout_name}")
-			
-			# Оптимизация размещения узлов
-			try:
-				pos = layout_func(G, seed=42) if layout_name == 'spring' else layout_func(G)
-			except Exception as e:
-				print(f"Ошибка при вычислении layout {layout_name}: {e}")
-				continue
-			
-			# Получение цветов узлов из атрибутов
-			node_colors = [data['color'] for _, data in G.nodes(data=True)]
-			
-			# Визуализация сети
-			plt.figure(figsize=(15, 10))
-			nx.draw(G, pos, with_labels=True, node_size=700, node_color=node_colors, font_size=6, font_color='black',
-			        edge_color='gray')
-			# Заголовок
-			title = f'Network for {selected_project} in {currency} - {layout_name.capitalize()} Layout'
-			plt.title(title, fontsize=14)
-			
-			# Расширение области для добавления пояснения
-			plt.subplots_adjust(bottom=0.2)
-			
-			# Добавление пояснения
-			description = f"Project: {selected_project}, Currency: {currency}, Layout: {layout_name.capitalize()}"
-			plt.figtext(0.5, 0.02, description, wrap=True, horizontalalignment='center', fontsize=10)
-			
-			# Сохранение графика в файл
-			file_path = os.path.join(output_folder, f'network_{selected_project}_{currency}_{layout_name}.png')
-			try:
-				plt.savefig(file_path)
-				print(f"График с размещением {layout_name} сохранен: {file_path}")
-			except Exception as error:
-				print(f"Ошибка при сохранении графика {layout_name}: {error}")
-			finally:
-				plt.close('all')
-				gc.collect()
-	
-	QMessageBox.information(parent_widget, "Сообщение",
-	                        f"Метод сетевого анализа завершен. Файлы сохранены в папке {output_folder}")
-	return
-
 def network_analysis_improved(parent_widget, df):
     """
     Улучшенный сетевой анализ для одного проекта с визуализацией
@@ -524,10 +426,8 @@ def network_analysis_improved(parent_widget, df):
 
     # Подготовка данных и папок
     selected_project = df["project_name"].iloc[0]
-    output_folder = os.path.join(
-        os.getcwd(), "network_graphs"
-    )  # Использование относительного пути
-    os.makedirs(output_folder, exist_ok=True)
+    OUTPUT_DIR = os.path.join(BASE_DIR, "network_graphs") # Использование относительного пути
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # Список алгоритмов размещения
     layouts = {
@@ -606,17 +506,15 @@ def network_analysis_improved(parent_widget, df):
         title = f"Сетевой анализ проекта {selected_project} ({layout_name.capitalize()} Layout)"
         plt.title(title, fontsize=14)
 
-        file_path = os.path.join(
-            output_folder, f"network_{selected_project}_{layout_name}.png"
+        file_path = os.path.join(OUTPUT_DIR, f"network_{selected_project}_{layout_name}.png"
         )
         plt.savefig(file_path, dpi=300)
-        print(f"График с размещением {layout_name} сохранен: {file_path}")
         plt.close()
 
     QMessageBox.information(
         parent_widget,
         "Сообщение",
-        f"Метод сетевого анализа завершен. Файлы сохранены в папке {output_folder}",
+        f"Метод сетевого анализа завершен. Файлы сохранены в папке {OUTPUT_DIR}",
     )
 
 def find_common_suppliers_between_disciplines(df):
