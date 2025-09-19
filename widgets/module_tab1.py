@@ -69,7 +69,7 @@ class Tab1Widget(QWidget):
 			                    "Начальная дата позже конечной даты. Проверьте корректность значений")
 			return
 		
-		# Загружаем данные из warehouses_remnants по выбранным датам
+		# Загружаем данные по выбранным датам
 		db_path = SQL_PATH
 		conn = sqlite3.connect(db_path)
 		cursor = conn.cursor()

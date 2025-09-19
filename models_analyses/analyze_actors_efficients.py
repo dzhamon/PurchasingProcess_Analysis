@@ -17,7 +17,6 @@ class AnalyzeActorsEfficients:
         self.SUPPLIER_BEHAVIOR_DIR = os.path.join(self.BASE_OUT_DIR, 'Supplier-Behavior')
         os.makedirs(self.SUPPLIER_BEHAVIOR_DIR, exist_ok=True)
 
-
     
     def analyze_supplier_frequency(self):
         # Выводим в список уникальные наименования Проектов

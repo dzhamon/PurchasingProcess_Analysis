@@ -222,9 +222,6 @@ def detailed_results_analyses(analyzed_df, anomaly_stats):
 	# Сохранение графика в PNG
 	plt.savefig(output_file_path, format='png', dpi=300)  # dpi=300 для высокого качества
 	
-	# Отображение графика
-	plt.show()
-	
 	print(f"График успешно сохранён в файл: {output_file_path}")
 	
 	# Шаг 4: Вывод аномальных точек
@@ -241,25 +238,22 @@ def detailed_results_analyses(analyzed_df, anomaly_stats):
 
 
 # вызов функций из главного метода
-def main_method(filtered_df, data_df, parent_widget=None):
+def main_method(data_df, parent_widget=None):
+	from utils.config import BASE_DIR
 	print("Мы вошли в метод main_method")
-	output_folder = 'D:\Analysis-Results\efficient_analyses'
-	print(filtered_df.columns)
+	OUTPUT_DIR = os.path.join(BASE_DIR, 'efficient_analyses')
+	os.makedirs(OUTPUT_DIR, exist_ok=True)
 	
 	# добираем товары выбранной категории в датафрейм
-	selected_lots = filtered_df['lot_number'].unique()
-	filtered_df = data_df[data_df['lot_number'].isin(selected_lots)]
+	filtered_df = data_df.copy()
 	
 	analyzed_df, stats = analyze_efficiency(filtered_df)
 	
 	# Сохранение анализа эффективности исполнителей
-	file_path = os.path.join(output_folder, "Efficiency_Metrics.xlsx")
+	file_path = os.path.join(OUTPUT_DIR, "Efficiency_Metrics.xlsx")
 	print(f"Сохраняем файл в: {file_path}")
 	
 	if not analyzed_df.empty:
-		if not os.path.exists(output_folder):
-			os.makedirs(output_folder)
-		
 		file_saved = False
 		while not file_saved:
 			try:

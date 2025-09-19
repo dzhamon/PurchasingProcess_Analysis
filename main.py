@@ -1,6 +1,5 @@
 import matplotlib
-
-matplotlib.use("Agg")  # Устанавливаем безопасный бэкенд
+matplotlib.use('Qt5Agg')
 
 import json
 import sys
@@ -61,17 +60,17 @@ class MyTabWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.notebook)
         self.setLayout(layout)
-        
+
         # Инициализация QLabel для отображения подсказок
         self.tooltip_label = QLabel(self)
         self.tooltip_label.setStyleSheet(
             "background-color: yellow; color: black; font-size: 12px; padding: 5px; border: 1px solid black;"
         )
-        self.tooltip_label.hide() # Скрываем по умолчанию
+        self.tooltip_label.hide()  # Скрываем по умолчанию
 
-         # Вызов метода setup_tabs
+        # Вызов метода setup_tabs
         self.setup_tabs()
-        
+
     def showTooltip(self, text, x=20, y=20):
         try:
             # Устанавливаем текст подсказки и показываем ее в фиксированной позиции для отладки
@@ -86,11 +85,19 @@ class MyTabWidget(QWidget):
     def hideTooltip(self):
         # скрываем виджет подсказки
         self.tooltip_label.hide()
-    
+
     def handle_analysis_data(self, df):
         """Слот для получения данных из Tab2"""
         self._current_filtered_df = df.copy()
         print(f"Данные получены. Размер: {df.shape}")
+
+    def handle_secondary_data(self, df):
+        """
+        Новый слот для получения данных, который будет обрабатывать их в
+        методе run_efficient_
+        """
+        self._second_filtered_df = df.copy()
+        print(f"Второй слот получил данные. Размер: {df.shape}")
 
     def setup_tabs(self):
         # создание отдельных вкладок
@@ -106,6 +113,7 @@ class MyTabWidget(QWidget):
         ]
         tab2 = Tab2Widget(params_for_tab2)
         tab2.data_ready_for_analysis.connect(self.handle_analysis_data)
+        # tab2.filtered_data_changed.connect(self.tab_widget.handle_secondary_data)
         tab3 = Tab3Widget()
         params_for_tab4 = [
             "lot_number",
@@ -165,10 +173,19 @@ class Window(QMainWindow):
         self.tab_widget = MyTabWidget()
         self.setCentralWidget(self.tab_widget)
 
+        # Создадим экземпляры вкладок
+        self.tab1 = Tab1Widget()
+        # self.tab2 = Tab2Widget()
+
         # Подключение сигнала для обновления данных между вкладками
         tab1_widget = self.tab_widget.notebook.widget(
             0
         )  # Получаем первый виджет вкладки
+
+        # Подключение сигнала из Tab1Widget напрямую к слоту в MainWindow
+        self.tab1.filtered_data_changed.connect(self.set_filtered_data)
+        print("Соединение установлено. Данные получены")
+
         if isinstance(tab1_widget, Tab1Widget):
             tab1_widget.filtered_data_changed.connect(self.update_tab2_data)
 
@@ -230,7 +247,9 @@ class Window(QMainWindow):
 
     def _createMenuBar(self):
         menuBar = self.menuBar()
-        menuBar.setStyleSheet("QMenuBar { font-family: 'Times New Roman'; font-size: 12pt; }")
+        menuBar.setStyleSheet(
+            "QMenuBar { font-family: 'Times New Roman'; font-size: 12pt; }"
+        )
 
         # Меню Файл
         fileMenu = menuBar.addMenu("Ввод основной информации и выход из программы")
@@ -271,11 +290,10 @@ class Window(QMainWindow):
         )
         action.hovered.connect(lambda: self.tab_widget.showTooltip(hint_text))
         action.triggered.connect(self.tab_widget.hideTooltip)
-        
+
     def leaveEvent(self, event):
         self.tab_widget.hideTooltip()
         super().leaveEvent(event)
-
 
     def _createActions(self):
         # Действия для меню Файл
@@ -305,22 +323,26 @@ class Window(QMainWindow):
             "Анализ данных по Лотам",
             "Сетевой анализ проектов",
         )
-        
+
         self.analyzeKPIAction = QAction("Анализ KPI", self)
         self.setActionTooltip(
             self.analyzeKPIAction,
             "Анализ данных по Лотам",
             "Расчет показателей KPI",
         )
-        
-        self.suppliersfriquencyAction = QAction("Анализ эффективности исполнителей", self)
+
+        self.suppliersfriquencyAction = QAction(
+            "Анализ эффективности исполнителей", self
+        )
         self.setActionTooltip(
             self.suppliersfriquencyAction,
             "Анализ данных по Лотам",
             "Анализ эффективности исполнителей",
         )
 
-        self.efficiency_analyses_action = QAction("Анализ эффективности и поиск аномалий", self)
+        self.efficiency_analyses_action = QAction(
+            "Анализ эффективности и поиск аномалий", self
+        )
         self.setActionTooltip(
             self.efficiency_analyses_action,
             "Анализ данных по Лотам",
@@ -332,14 +354,18 @@ class Window(QMainWindow):
             "Анализ данных по Лотам",
             "Ранжирование Поставщиков",
         )
-        self.find_cross_discipline_lotsAction = QAction("Анализ лотов общих для разных дисциплин", self)
+        self.find_cross_discipline_lotsAction = QAction(
+            "Анализ лотов общих для разных дисциплин", self
+        )
         self.setActionTooltip(
-            self.find_cross_discipline_lotsAction, # Этот модуль совместно с grapf_network_analysis собрать в отдельный class
+            self.find_cross_discipline_lotsAction,  # Этот модуль совместно с grapf_network_analysis собрать в отдельный class
             "Анализ данных по Лотам",
             "Анализ лотов общих для разных дисциплин",
         )
 
-        self.lotcount_peryearAction = QAction("Количество лотов по дисциплинам по-квартально", self)
+        self.lotcount_peryearAction = QAction(
+            "Количество лотов по дисциплинам по-квартально", self
+        )
         self.setActionTooltip(
             self.lotcount_peryearAction,
             "Анализ данных по Лотам",
@@ -394,11 +420,14 @@ class Window(QMainWindow):
         )
 
         # Действия для меню Анализ данных по Складам
-        self.warehouseStatistics = QAction("Расчет остатков сум на складах по валютам", self)
-        self.setActionTooltip(self.warehouseStatistics,
-                              "Анализ данных по Складам",
-                              "Остатки сумм на складах по валютам",
-                              )
+        self.warehouseStatistics = QAction(
+            "Расчет остатков сум на складах по валютам", self
+        )
+        self.setActionTooltip(
+            self.warehouseStatistics,
+            "Анализ данных по Складам",
+            "Остатки сумм на складах по валютам",
+        )
 
     def _connectActions(self):
         # Подключение сигналов к действиям
@@ -408,12 +437,20 @@ class Window(QMainWindow):
         # Подключение сигналов к методам Анализа данных по Лотам
         self.analyzeMonthlyExpensesAction.triggered.connect(
             self.run_analyze_monthly_cost
-        )
-        self.analyzeTopSuppliersAction.triggered.connect(self.run_analyze_top_suppliers)
-        self.suppliersfriquencyAction.triggered.connect(self.run_analyze_supplier_friquency)
-        self.networkanalyseAction.triggered.connect(self.run_network_analysis)
-        self.analyzeKPIAction.triggered.connect(self.run_kpi_analysis)
-        self.efficiency_analyses_action.triggered.connect(self.run_efficiency_analyses)
+        )  # анализ месячных затрат
+        self.analyzeTopSuppliersAction.triggered.connect(
+            self.run_analyze_top_suppliers
+        )  # анализ top-поставщиков
+        self.suppliersfriquencyAction.triggered.connect(
+            self.run_analyze_supplier_friquency
+        )  # Анализ частоты поставщиков
+        self.networkanalyseAction.triggered.connect(
+            self.run_network_analysis
+        )  # Сетевой анализ
+        self.analyzeKPIAction.triggered.connect(self.run_kpi_analysis)  # Анализ KPI
+        self.efficiency_analyses_action.triggered.connect(
+            self.run_efficiency_analyses
+        )  # Анализ частоты исп-й и поиск аномалий
         self.suppliers_by_unit_price_action.triggered.connect(
             self.run_analyze_by_unit_price
         )
@@ -452,7 +489,6 @@ class Window(QMainWindow):
     def run_clean_data(self):
         clean_database()
 
-    # УБРАН СЛОЖНЫЙ start_analysis МЕТОД - ВСЕ АНАЛИЗЫ ТЕПЕРЬ СИНХРОННЫЕ
     def show_progress(self, value):
         """Простое обновление прогресс-бара для синхронных операций"""
         self.progress_bar.setValue(value)
@@ -464,28 +500,51 @@ class Window(QMainWindow):
 
     def run_kpi_analysis(self):
         """Запуск анализа KPI с использованием отфильтрованных данных."""
+        from utils.config import BASE_DIR
+        OUT_DIR = os.path.join(BASE_DIR, 'KPI_Resilts')
+        os.makedirs(OUT_DIR, exist_ok=True)
         if self._current_filtered_df is not None:
             self.progress_bar.setValue(0)
             from models_analyses.MyLotAnalyzeKPI import LotAnalyzeKPI
-
-            # Передаем отфильтрованные данные в KPI анализатор
-            kpi_analyzer = LotAnalyzeKPI(self._current_filtered_df)
-            self.df_kpi_normalized = kpi_analyzer.calculate_kpi(
-                self._current_filtered_df
-            )
-
-            # Визуализация KPI
-            self.visualize_kpi()
-            QMessageBox.information(self, "KPI Анализ", "KPI анализ успешно завершен.")
+            
+            # здесь нужно определить current_df отфильтрован по project_name или нет.
+            n_unique_project_name = self._current_filtered_df['project_name'].nunique()
+            if n_unique_project_name == 1:
+                try:
+                    project_name = self._current_filtered_df['project_name'].unique()
+                    # 1. Определяем веса
+                    weights = {"lots": 0.5, "value": 0.3, "time": 0.2, "success": 0.2}
+    
+                    # Создаем экземпляр анализатора, передавая ему и данные и веса
+                    kpi_analyzer = LotAnalyzeKPI(self._current_filtered_df, weights, OUT_DIR)
+    
+                    # 3. Рассчитываем итоговый KPI (для bar_chart и тепловой карты)
+                    self.df_kpi_normalized = kpi_analyzer.calculate_kpi()
+    
+                    # 4. Рассчитываем ежемесячный KPI (для линейного графика)
+                    self.df_kpi_monthly = kpi_analyzer.calculate_monthly_kpi()
+    
+                    # 5. Если расчет успешен переходим к визуализации
+                    self.visualize_kpi(OUT_DIR)
+                except Exception as e:
+                    QMessageBox.critical(
+                        self, "Ошибка", f"Произошла ошибка при расчете KPI: {e}"
+                    )
+                    self.df_kpi_normalized = None  # Убедимся, что переменная сброшена
+                QMessageBox.information(self, "KPI Анализ", "KPI анализ успешно завершен.")
+            else:
+                # в датафрейме много проектов
+                QMessageBox.warning(self, "KPI Анализ", "Слишком много проектов! Оставьте один проект и повторите заново")
         else:
             QMessageBox.warning(
                 self, "Ошибка", "Нет отфильтрованных данных для анализа KPI."
             )
 
-    def visualize_kpi(self):
+    def visualize_kpi(self, OUT_DIR):
+        from utils.visualizer import KPIVisualizer
         """Вызов визуализации KPI."""
         if hasattr(self, "df_kpi_normalized") and self.df_kpi_normalized is not None:
-            visualizer = KPIVisualizer(self.df_kpi_normalized)
+            visualizer = KPIVisualizer(self.df_kpi_normalized, self.df_kpi_monthly, OUT_DIR=OUT_DIR)
 
             # Создаем диалог для выбора типа визуализации
             dialog = QMessageBox(self)
@@ -535,7 +594,7 @@ class Window(QMainWindow):
         if self._current_filtered_df is not None:
             self.progress_bar.show()
             self.show_progress(10)
-           
+
             from models_analyses.analysis import analyze_top_suppliers
 
             # здесь логика для анализа данных
@@ -547,7 +606,10 @@ class Window(QMainWindow):
 
     def run_ClusterAnalyze(self):
         # Метод для классификации поставщиков
-        from models_analyses.clusterAnalysis_suppliers import run_enhanced_supplier_clustering
+        from models_analyses.clusterAnalysis_suppliers import (
+            run_enhanced_supplier_clustering,
+        )
+
         if self._current_filtered_df is not None:
             self.progress_bar.show()
             self.show_progress(10)
@@ -556,17 +618,24 @@ class Window(QMainWindow):
             os.makedirs(output_dir, exist_ok=True)
 
             self.show_progress(30)
-            
+
             # Конвертируем цены за единицу и суммы контрактов в единую валюту EUR
             converter = CurrencyConverter()
             columns_info = [
-                ("total_contract_amount", "contract_currency", "total_contract_amount_eur"),
+                (
+                    "total_contract_amount",
+                    "contract_currency",
+                    "total_contract_amount_eur",
+                ),
                 ("unit_price", "contract_currency", "unit_price_eur"),
             ]
-            contracts_data = converter.convert_multiple_columns(self._current_filtered_df, columns_info)
-            
-            supplier_clusters, analyzer = run_enhanced_supplier_clustering(contracts_data)
+            contracts_data = converter.convert_multiple_columns(
+                self._current_filtered_df, columns_info
+            )
 
+            supplier_clusters, analyzer = run_enhanced_supplier_clustering(
+                contracts_data
+            )
 
     def run_analyze_supplier_friquency(self):
         # Метод для анализа частоты выбора поставщиков
@@ -574,7 +643,9 @@ class Window(QMainWindow):
             self.progress_bar.show()
             self.show_progress(10)
 
-            from models_analyses.analyze_actors_efficients import AnalyzeActorsEfficients
+            from models_analyses.analyze_actors_efficients import (
+                AnalyzeActorsEfficients,
+            )
 
             # создаем экземпляр класса
             analyzer = AnalyzeActorsEfficients(self._current_filtered_df)
@@ -589,7 +660,6 @@ class Window(QMainWindow):
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных для анализа.")
 
-
     def run_network_analysis(self):
         # Метод для сетевого анализа
         if self._current_filtered_df is not None:
@@ -597,9 +667,12 @@ class Window(QMainWindow):
             self.show_progress(10)
 
             print("Запуск сетевого анализа")
-            # from models_analyses.analysis import network_analysis
-            # from models_analyses.analysis import network_analysis_improved
-            from models_analyses.graph_analyze_common_suppliers import analyze_and_visualize_suppliers
+            from models_analyses.analysis import network_analysis
+            from models_analyses.analysis import network_analysis_improved
+            from models_analyses.graph_analyze_common_suppliers import (
+                analyze_and_visualize_suppliers,
+            )
+
             analyze_and_visualize_suppliers(self, self._current_filtered_df)
             self.show_progress(100)
             self.hide_progress()
@@ -692,8 +765,8 @@ class Window(QMainWindow):
 
         from models_analyses.efficiency_analyses import main_method
 
-        main_method(self.filtered_df, self.data_df)
-        # Использует self.filtered_df и self.data_df, убедиться, что они заполнены
+        main_method(self._current_filtered_df)
+        # Использует self._current_filtered_df - убедиться, что он заполнен
         self.show_progress(100)
         self.hide_progress()
 
@@ -926,10 +999,16 @@ class Window(QMainWindow):
             converter = CurrencyConverter()
             # Конвертируем и сохраняем нужный столбец
             columns_info = [
-                ("total_contract_amount", "contract_currency", "total_contract_amount_eur"),
+                (
+                    "total_contract_amount",
+                    "contract_currency",
+                    "total_contract_amount_eur",
+                ),
                 ("unit_price", "contract_currency", "unit_price_eur"),
             ]
-            current_project_data = converter.convert_multiple_columns(self._current_filtered_df, columns_info)
+            current_project_data = converter.convert_multiple_columns(
+                self._current_filtered_df, columns_info
+            )
 
             # запускаем непосредственно анализ
             results = self.alternative_suppliers_analyzer.run_analysis(
@@ -947,7 +1026,11 @@ class Window(QMainWindow):
         if results_aggregator:
             # Подсчитываем статистику
             total_disciplines = len(results_aggregator)
-            total_products = sum(len(products_data) for products_data in results_aggregator.values() if products_data)
+            total_products = sum(
+                len(products_data)
+                for products_data in results_aggregator.values()
+                if products_data
+            )
             total_alternatives = sum(
                 info.get("alternatives_found", 0)
                 for products_data in results_aggregator.values()
@@ -955,12 +1038,13 @@ class Window(QMainWindow):
                 for info in products_data.values()
             )
             products_with_alternatives = sum(
-                1 for products_data in results_aggregator.values()
+                1
+                for products_data in results_aggregator.values()
                 if products_data
                 for info in products_data.values()
                 if info.get("alternatives_found", 0) > 0
             )
-            
+
             full_report_text = f"""Анализ альтернативных поставщиков завершен!
 
             Результаты:
@@ -970,11 +1054,10 @@ class Window(QMainWindow):
             • Продуктов с альтернативами: {products_with_alternatives}
     
             Подробные результаты сохранены в Excel файл."""
-        
+
         else:
             full_report_text = "Анализ завершен, но результаты не получены."
-            
-            
+
         # Экспорт в Excel
         options = QFileDialog.Options()
         file_name, _ = QFileDialog.getSaveFileName(
@@ -988,15 +1071,15 @@ class Window(QMainWindow):
             export_success = export_alternative_suppliers_to_excel(
                 results_aggregator, file_name
             )
-        
+
             if export_success:
                 full_report_text += "\n\n✅ Данные успешно экспортированы в Excel."
             else:
                 full_report_text += "\n\n❌ Ошибка при экспорте в Excel."
-        
+
         self.show_progress(100)
         self.hide_progress()
-        
+
         QMessageBox.information(self, "Результаты анализа", full_report_text)
 
     # Расчет сумм остатков по складам по валютам поставок
@@ -1011,6 +1094,7 @@ class Window(QMainWindow):
         self.show_progress(100)
         self.hide_progress()
 
+
 if __name__ == "__main__":
     app = QApplication.instance()
     if app is None:
@@ -1019,7 +1103,9 @@ if __name__ == "__main__":
     # 🔹 Устанавливаем коэффициент масштабирования (например, 1.5 = 150%)
     app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    QFontDatabase.addApplicationFont("C:/Windows/Fonts/arial.ttf")  # пример, если нужен конкретный шрифт
+    QFontDatabase.addApplicationFont(
+        "C:/Windows/Fonts/arial.ttf"
+    )  # пример, если нужен конкретный шрифт
     app.setFont(QFont("Arial", 12))  # здесь можешь менять размер под свой монитор
 
     # Загружаем стили из CSS-файла
@@ -1037,4 +1123,3 @@ if __name__ == "__main__":
     window.show()
 
     app.exec_()
-

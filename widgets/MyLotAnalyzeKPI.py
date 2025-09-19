@@ -145,27 +145,27 @@ class LotAnalyzeKPI:
 	
 	# Здесь методы расчета итоговой средневзвешенной оценки KPI каждого сотрудника
 	
-	def normalize_kpi_table(self, df_kpi):
-		"""
-		Нормализует значения в таблице KPI по каждому столбцу и возвращает нормализованную таблицу.
-		"""
-		# Выбираем столбцы, которые нужно нормализовать
-		columns_to_normalize = ['total_lots', 'avg_time_to_close', 'avg_lot_value', 'sum_lot_value']
-		
-		# Преобразуем Timedelta в дни для нормализации
-		if 'avg_time_to_close' in df_kpi.columns:
-			df_kpi['avg_time_to_close'] = df_kpi['avg_time_to_close'].apply(
-				lambda x: x if isinstance(x, (int, float)) else x.days)
-		
-		# Инициализируем нормализатор MinMaxScaler
-		scaler = MinMaxScaler()
-		
-		# Применяем нормализацию к указанным столбцам
-		df_kpi[columns_to_normalize] = scaler.fit_transform(df_kpi[columns_to_normalize])  # Нормализация не работает
-		
-		# Вычисляем итоговый KPI как сумму нормализованных значений
-		df_kpi['kpi_score'] = df_kpi[columns_to_normalize].sum(axis=1)
-		return df_kpi
+	# def normalize_kpi_table(self, df_kpi):
+	# 	"""
+	# 	Нормализует значения в таблице KPI по каждому столбцу и возвращает нормализованную таблицу.
+	# 	"""
+	# 	# Выбираем столбцы, которые нужно нормализовать
+	# 	columns_to_normalize = ['total_lots', 'avg_time_to_close', 'avg_lot_value', 'sum_lot_value']
+	#
+	# 	# Преобразуем Timedelta в дни для нормализации
+	# 	if 'avg_time_to_close' in df_kpi.columns:
+	# 		df_kpi['avg_time_to_close'] = df_kpi['avg_time_to_close'].apply(
+	# 			lambda x: x if isinstance(x, (int, float)) else x.days)
+	#
+	# 	# Инициализируем нормализатор MinMaxScaler
+	# 	scaler = MinMaxScaler()
+	#
+	# 	# Применяем нормализацию к указанным столбцам
+	# 	df_kpi[columns_to_normalize] = scaler.fit_transform(df_kpi[columns_to_normalize])  # Нормализация не работает
+	#
+	# 	# Вычисляем итоговый KPI как сумму нормализованных значений
+	# 	df_kpi['kpi_score'] = df_kpi[columns_to_normalize].sum(axis=1)
+	# 	return df_kpi
 	
 	def calculate_kpi(self, df):
 		"""
