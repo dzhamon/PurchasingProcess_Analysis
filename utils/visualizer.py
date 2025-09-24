@@ -7,91 +7,74 @@ import os
 from PyQt5.QtWidgets import QMessageBox
 
 class KPIVisualizer:
-    def __init__(self, df_kpi_normalized, df_kpi_monthly, project_type_name):
+    def __init__(self, df_kpi_normalized, df_kpi_monthly, report_dir):
         self.df_kpi_normalized = df_kpi_normalized
         self.df_kpi_monthly = df_kpi_monthly
-        self.project_type_name = project_type_name
+        self.report_dir = report_dir
         print('DF_KPY ', df_kpi_normalized.describe())
         print(self.df_kpi_normalized.columns)
-
+    
     def plot_bar_chart(self):
         """
-        Бар-чарт для сравнения KPI сотрудников по дисциплинам.
+        Создает бар-чарт для сравнения KPI сотрудников.
+        Отображает топ-10 лучших и топ-10 худших исполнителей.
         """
-        plt.figure(figsize=(12, 8))
-        sns.barplot(x='actor_name', y='kpi_score', hue='discipline', data=self.df_kpi_normalized)
-        plt.title('KPI сотрудников по дисциплинам')
-        plt.xlabel('Сотрудник')
-        plt.ylabel('KPI Score')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.show()
-
-    def plot_pie_chart(self):
-        """
-           Создает бар-чарт для сравнения KPI сотрудников.
-           Отображает топ-10 лучших и топ-10 худших исполнителей.
-           """
-        discipline_kpi = (
-                        self.df_kpi_normalized.groupby("discipline")["kpi_score"].sum().reset_index()
-                        )
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        import pandas as pd
+        import os
     
-        # Круговая диаграмма не может иметь отрицательных значений
-        if (discipline_kpi['kpi_score'] < 0).any():
-            QMessageBox.warning(
-                None,
-                "Ошибка",
-                "KPI Score содержит отрицательные значения, круговая диаграмма не может быть построена.",
-            )
-            return
-            
         # Сортируем DataFrame по kpi_score
-        df_sorted = self.df_kpi_normalized.sort_values(by='kpi_score', ascending=False)
-        
+        df_sorted = self.df_kpi_normalized.sort_values(by="kpi_score", ascending=False)
+    
         # Выбираем топ-10 лучших и топ-10 худших
         df_top_10 = df_sorted.head(10)
         df_bottom_10 = df_sorted.tail(10)
-        
+    
         # Объединяем их в один DataFrame для построения графика
         df_to_plot = pd.concat([df_top_10, df_bottom_10])
-        
+    
         plt.figure(figsize=(15, 10))
-        
+    
         # Строим бар-чарт
         sns.barplot(
-            x='actor_name',
-            y='kpi_score',
-            hue='discipline',
+            x="actor_name",
+            y="kpi_score",
+            hue="discipline",
             data=df_to_plot,
-            palette='viridis' # Используем более приятную палитру
+            palette="viridis",  # Используем более приятную палитру
         )
-        
-        plt.title('Топ-10 лучших и худших исполнителей по общему KPI')
-        plt.xlabel('Сотрудник')
-        plt.ylabel('KPI Score (нормализованное значение)')
-        plt.xticks(rotation=45, ha='right') # Улучшаем читаемость подписей
-        
+    
+        plt.title(
+            f"Топ-10 лучших и худших исполнителей по общему KPI"
+        )
+        plt.xlabel("Сотрудник")
+        plt.ylabel("KPI Score (нормализованное значение)")
+        plt.xticks(rotation=45, ha="right")  # Улучшаем читаемость подписей
+    
         # Размещаем легенду за пределами графика
-        plt.legend(title='Дисциплина', bbox_to_anchor=(1.05, 1), loc='upper left')
-        
+        plt.legend(title="Дисциплина", bbox_to_anchor=(1.05, 1), loc="upper left")
+    
         plt.tight_layout()
         plt.show()
-        
-        # --- Опционально: сохраняем график в файл ---
-        output_dir = os.path.join(self.project_type_name, "overall_kpi")
+    
+        # --- Сохраняем график в файл ---
+        output_dir = os.path.join(self.report_dir, "overall_kpi_charts")
         os.makedirs(output_dir, exist_ok=True)
-        filename = os.path.join(output_dir, "Overall_KPI_Chart.png")
-        plt.savefig(filename, dpi=300)
+        filename = os.path.join(output_dir, f"Overall_KPI_Chart_xxx.png")
+        plt.savefig(filename, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"Общий график KPI сохранён в файл: {filename}")
-    
+
+
     def plot_heatmap(self):
         """
         Тепловая карта для анализа KPI сотрудников по дисциплинам.
         """
-        output_dir = os.path.join(self.project_type_name, 'Тепловые карты по дисциплинам')
-        os.makedirs(output_dir, exist_ok=True)
         print('Мы в методе plot_heatmap')
+        
+        out_dir = os.path.join(self.report_dir, 'Тепловые карты по дисциплинам')
+        os.makedirs(out_dir, exist_ok=True)
         
         # Получаем уникальные дисциплины
         disciplines = self.df_kpi_normalized['discipline'].unique()
@@ -102,7 +85,12 @@ class KPIVisualizer:
             df_discipline = self.df_kpi_normalized[self.df_kpi_normalized['discipline'] == discipline]
             
             # Пивотируем данные для тепловой карты
-            heatmap_data = df_discipline.pivot(index='actor_name', columns='discipline', values='kpi_score')
+            heatmap_data = df_discipline.pivot_table(
+                 index="actor_name",
+                 columns="discipline",
+                 values="kpi_score",
+                 aggfunc="mean",
+             )
             
             # Проверяем, есть ли данные для текущей дисциплины
             if heatmap_data.empty:
@@ -112,7 +100,7 @@ class KPIVisualizer:
             # Настройка размера под A4
             plt.figure(figsize=(20, 10))  # Пропорции A4
             ax = sns.heatmap(heatmap_data, annot=False, cmap="viridis", cbar=True, linewidths=0.5)
-            plt.title(f"{self.project_type_name}Тепловая карта KPI для дисциплины: {discipline}", fontsize=12, pad=20)
+            plt.title(f"Тепловая карта KPI для дисциплины: {discipline}", fontsize=12, pad=20)
             plt.xlabel("Дисциплина", fontsize=12)
             plt.ylabel("Сотрудник", fontsize=10)
             
@@ -126,19 +114,19 @@ class KPIVisualizer:
                 )
             
             # Сохраняем график
-            output_path = os.path.join(output_dir, f"heatmap_{discipline}.png")
+            file_name = os.path.join(out_dir, f"heatmap_{discipline}.png")
             plt.tight_layout()  # Устраняет проблемы с выравниванием
-            plt.savefig(output_path, dpi=300)
+            plt.savefig(file_name, dpi=300)
             plt.close()
-            print(f"Тепловая карта для дисциплины '{discipline}' сохранена в {output_dir}.")
+            print(f"Тепловая карта для дисциплины '{discipline}' сохранена в {out_dir}.")
     
     def plot_line_chart(self):
         """
         Создает отдельные линейные графики для каждой дисциплины и сохраняет их в PNG.
         """
-        output_dir = os.path.join(self.project_type_name, "Линейные графики по дисциплинам")
-        os.makedirs(output_dir, exist_ok=True)
-
+        out_dir = os.path.join(self.report_dir, "Линейные графики по дисциплинам по дисциплинам")
+        os.makedirs(out_dir, exist_ok=True)
+        
         # Получаем список уникальных дисциплин
         disciplines = self.df_kpi_monthly['discipline'].unique()
 
@@ -162,7 +150,7 @@ class KPIVisualizer:
                     marker="o",
                 )
 
-                plt.title(f"{self.project_type_name} - Динамика KPI по месяцам: {discipline}")
+                plt.title(f" - Динамика KPI по месяцам: {discipline}")
                 plt.xlabel("Месяц")
                 plt.ylabel("KPI Score")
                 plt.xticks(rotation=45)
@@ -171,13 +159,13 @@ class KPIVisualizer:
                 plt.tight_layout()
                 
                 # Формируем имя файла
-                filename = os.path.join(output_dir, f"{discipline}.png")
+                filename = os.path.join(out_dir, f"{discipline}.png")
                 
                 # Сохраняем график в файл PNG
                 plt.savefig(filename, dpi=300, bbox_inches='tight')
                 plt.close() # Закрываем фигуру, чтобы не перегружать память
                 
-                print(f"График для дисциплины '{discipline}' сохранен в файл: {filename}")
+                print(f"График для дисциплины '{discipline}' сохранен в файл: {out_dir}")
             else:
                 print(f"В дисциплине '{discipline}' недостаточно данных для линейного графика (меньше 2 сотрудников).")
         

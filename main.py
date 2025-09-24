@@ -512,21 +512,21 @@ class Window(QMainWindow):
             if n_unique_project_name == 1:
                 # Сценарий 1. Данные отфильтрованы по одному пролекту
                 self.project_type_name = self._current_filtered_df['project_name'].unique()[0]
-                report_dir = os.path.join(OUT_DIR, self.project_type_name)
+                self.report_dir = os.path.join(OUT_DIR, self.project_type_name)
                 analysis_type ='single_project'
             else:
-                # Сценарий 2 Данных не отфильтрованы или проектов несколько
+                # Сценарий 2 Данные не отфильтрованы или проектов несколько
                 self.project_type_name = 'Общий отчет'
-                report_dir = os.path.join(OUT_DIR, self.project_type_name)
+                self.report_dir = os.path.join(OUT_DIR, self.project_type_name)
                 analysis_type = 'multi_project'
-            os.makedirs(report_dir, exist_ok=True)
+            os.makedirs(self.report_dir, exist_ok=True)
             try:
                 # 1. Определяем веса
                 weights = {"lots": 0.5, "value": 0.3, "time": 0.2, "success": 0.2}
 
                 # Создаем экземпляр анализатора, передавая ему и данные и веса
                 kpi_analyzer = LotAnalyzeKPI(df=self._current_filtered_df, weights=weights,
-                                             OUT_DIR=report_dir, analysis_type=analysis_type)
+                                             report_dir=self.report_dir, analysis_type=analysis_type)
 
                 # 3. Запускаем расчет KPI. Вся логика внутри класса
                 self.df_kpi_normalized = kpi_analyzer.calculate_kpi()
@@ -552,15 +552,11 @@ class Window(QMainWindow):
         if hasattr(self, "df_kpi_normalized") and self.df_kpi_normalized is not None:
             from utils.visualizer import KPIVisualizer
             
-            # # Определяем - с одним проектом мы работаем или с многими
-            # is_single_project = self.df_kpi_normalized['project_name'].nunique() == 1
-            # project_name = self.df_kpi_normalized['project_name'].unique()[0] if is_single_project else 'Общий отчет'
-            
             # Создаем экземпляр визуализатора, передавая ему все необходимые данные
             visualizer = KPIVisualizer(
                 self.df_kpi_normalized,
                 self.df_kpi_monthly,
-                self.project_type_name,
+                self.report_dir
             )
     
             # Создаем диалог для выбора типа визуализации
@@ -568,7 +564,7 @@ class Window(QMainWindow):
             dialog.setWindowTitle("Выбор типа визуализации")
             dialog.setText("Выберите тип визуализации KPI:")
             bar_btn = dialog.addButton("Бар-чарт", QMessageBox.ActionRole)
-            pie_btn = dialog.addButton("Круговая диаграмма", QMessageBox.ActionRole)
+            # pie_btn = dialog.addButton("Круговая диаграмма", QMessageBox.ActionRole)
             heatmap_btn = dialog.addButton("Тепловая карта", QMessageBox.ActionRole)
             line_btn = dialog.addButton("Линейный график", QMessageBox.ActionRole)
             dialog.exec_()
@@ -577,8 +573,8 @@ class Window(QMainWindow):
     
             if clicked_button == bar_btn:
                 visualizer.plot_bar_chart()
-            elif clicked_button == pie_btn:
-                visualizer.plot_pie_chart()
+            # elif clicked_button == pie_btn:
+            #     visualizer.plot_pie_chart()
             elif clicked_button == heatmap_btn:
                 visualizer.plot_heatmap()
             elif clicked_button == line_btn:

@@ -4,14 +4,14 @@ from utils.functions import CurrencyConverter
 
 
 class LotAnalyzeKPI:
-    def __init__(self, df, weights, OUT_DIR, analysis_type):
+    def __init__(self, df, weights, report_dir, analysis_type):
         """
         Инициализация с DataFrame, содержащим данные по лотам.
         """
         self.df = df
         self.unique_disciplines = self.df["discipline"].unique()
         self.weights = weights
-        self.OUT_DIR = OUT_DIR
+        self.report_dir = report_dir
         self.analysis_type = analysis_type
         self.successful_statuses = ["Конкурс завершен. Направлен в отдел АД"]
         
