@@ -4,7 +4,7 @@ from utils.functions import CurrencyConverter
 
 
 class LotAnalyzeKPI:
-    def __init__(self, df, weights, OUT_DIR):
+    def __init__(self, df, weights, OUT_DIR, analysis_type):
         """
         Инициализация с DataFrame, содержащим данные по лотам.
         """
@@ -12,7 +12,9 @@ class LotAnalyzeKPI:
         self.unique_disciplines = self.df["discipline"].unique()
         self.weights = weights
         self.OUT_DIR = OUT_DIR
+        self.analysis_type = analysis_type
         self.successful_statuses = ["Конкурс завершен. Направлен в отдел АД"]
+        
 
     def calculate_kpi(self):
         """
@@ -28,9 +30,14 @@ class LotAnalyzeKPI:
         self.df["total_price_eur"] = df_converted["total_price_eur"].copy()
 
         # 2. Группировка данных по дисциплине и исполнителю
-        grouped = self.df.groupby(["discipline", "actor_name"])
+        if self.analysis_type == 'single_project':
+            # группируем только по исполнителю и дисциплине
+            grouped = self.df.groupby(['discipline', 'actor_name'])
+        else:
+            # Для нескольких проектов добавляем 'project_name' в группировку
+            grouped = self.df.groupby(["project_name", "discipline", "actor_name"])
 
-        # Преобразуем даты в фориат datetime
+        # Преобразуем даты в формат datetime
         self.df["open_date"] = pd.to_datetime(self.df["open_date"])
         self.df["close_date"] = pd.to_datetime(self.df["close_date"])
 
@@ -112,8 +119,11 @@ class LotAnalyzeKPI:
         )
         self.df["total_price_eur"] = df_converted["total_price_eur"].copy()
 
-        # 3. Группировка данных по МЕСЯЦУ и ИСПОЛНИТЕЛЮ
-        grouped = self.df.groupby(["month", "discipline", "actor_name"])
+        # 3. Группировка данных
+        if self.analysis_type == 'single_project':
+            grouped = self.df.groupby(["month", "discipline", "actor_name"])
+        else:
+            grouped = self.df.groupby(["month", "project_name", "discipline", "actor_name"])
 
         # 4. Агрегация данных
         kpi_data = grouped.agg(

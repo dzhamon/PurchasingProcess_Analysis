@@ -3,14 +3,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import os
-from PyQt5.QtWidgets import QDialog, QVBoxLayout
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
+from PyQt5.QtWidgets import QMessageBox
 
 class KPIVisualizer:
-    def __init__(self, df_kpi_normalized, df_kpi_monthly, OUT_DIR):
+    def __init__(self, df_kpi_normalized, df_kpi_monthly, project_type_name):
         self.df_kpi_normalized = df_kpi_normalized
         self.df_kpi_monthly = df_kpi_monthly
-        self.OUT_DIR = OUT_DIR
+        self.project_type_name = project_type_name
         print('DF_KPY ', df_kpi_normalized.describe())
         print(self.df_kpi_normalized.columns)
 
@@ -29,20 +29,67 @@ class KPIVisualizer:
 
     def plot_pie_chart(self):
         """
-        Круговая диаграмма для распределения суммарных KPI по дисциплинам.
-        """
-        discipline_kpi = self.df_kpi_normalized.groupby('discipline')['kpi_score'].sum().reset_index()
-        plt.figure(figsize=(8, 8))
-        plt.pie(discipline_kpi['kpi_score'], labels=discipline_kpi['discipline'], autopct='%1.1f%%', startangle=140)
-        plt.title('Распределение KPI по дисциплинам')
-        plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+           Создает бар-чарт для сравнения KPI сотрудников.
+           Отображает топ-10 лучших и топ-10 худших исполнителей.
+           """
+        discipline_kpi = (
+                        self.df_kpi_normalized.groupby("discipline")["kpi_score"].sum().reset_index()
+                        )
+    
+        # Круговая диаграмма не может иметь отрицательных значений
+        if (discipline_kpi['kpi_score'] < 0).any():
+            QMessageBox.warning(
+                None,
+                "Ошибка",
+                "KPI Score содержит отрицательные значения, круговая диаграмма не может быть построена.",
+            )
+            return
+            
+        # Сортируем DataFrame по kpi_score
+        df_sorted = self.df_kpi_normalized.sort_values(by='kpi_score', ascending=False)
+        
+        # Выбираем топ-10 лучших и топ-10 худших
+        df_top_10 = df_sorted.head(10)
+        df_bottom_10 = df_sorted.tail(10)
+        
+        # Объединяем их в один DataFrame для построения графика
+        df_to_plot = pd.concat([df_top_10, df_bottom_10])
+        
+        plt.figure(figsize=(15, 10))
+        
+        # Строим бар-чарт
+        sns.barplot(
+            x='actor_name',
+            y='kpi_score',
+            hue='discipline',
+            data=df_to_plot,
+            palette='viridis' # Используем более приятную палитру
+        )
+        
+        plt.title('Топ-10 лучших и худших исполнителей по общему KPI')
+        plt.xlabel('Сотрудник')
+        plt.ylabel('KPI Score (нормализованное значение)')
+        plt.xticks(rotation=45, ha='right') # Улучшаем читаемость подписей
+        
+        # Размещаем легенду за пределами графика
+        plt.legend(title='Дисциплина', bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        plt.tight_layout()
         plt.show()
+        
+        # --- Опционально: сохраняем график в файл ---
+        output_dir = os.path.join(self.project_type_name, "overall_kpi")
+        os.makedirs(output_dir, exist_ok=True)
+        filename = os.path.join(output_dir, "Overall_KPI_Chart.png")
+        plt.savefig(filename, dpi=300)
+        plt.close()
+        print(f"Общий график KPI сохранён в файл: {filename}")
     
     def plot_heatmap(self):
         """
         Тепловая карта для анализа KPI сотрудников по дисциплинам.
         """
-        output_dir = os.path.join(self.OUT_DIR, 'heatmaps_by_discipline')
+        output_dir = os.path.join(self.project_type_name, 'Тепловые карты по дисциплинам')
         os.makedirs(output_dir, exist_ok=True)
         print('Мы в методе plot_heatmap')
         
@@ -65,7 +112,7 @@ class KPIVisualizer:
             # Настройка размера под A4
             plt.figure(figsize=(20, 10))  # Пропорции A4
             ax = sns.heatmap(heatmap_data, annot=False, cmap="viridis", cbar=True, linewidths=0.5)
-            plt.title(f"Тепловая карта KPI для дисциплины: {discipline}", fontsize=12, pad=20)
+            plt.title(f"{self.project_type_name}Тепловая карта KPI для дисциплины: {discipline}", fontsize=12, pad=20)
             plt.xlabel("Дисциплина", fontsize=12)
             plt.ylabel("Сотрудник", fontsize=10)
             
@@ -89,7 +136,7 @@ class KPIVisualizer:
         """
         Создает отдельные линейные графики для каждой дисциплины и сохраняет их в PNG.
         """
-        output_dir = os.path.join(self.OUT_DIR, "line_charts_by_discipline")
+        output_dir = os.path.join(self.project_type_name, "Линейные графики по дисциплинам")
         os.makedirs(output_dir, exist_ok=True)
 
         # Получаем список уникальных дисциплин
@@ -115,7 +162,7 @@ class KPIVisualizer:
                     marker="o",
                 )
 
-                plt.title(f"Динамика KPI по месяцам: {discipline}")
+                plt.title(f"{self.project_type_name} - Динамика KPI по месяцам: {discipline}")
                 plt.xlabel("Месяц")
                 plt.ylabel("KPI Score")
                 plt.xticks(rotation=45)
@@ -123,7 +170,7 @@ class KPIVisualizer:
                 
                 plt.tight_layout()
                 
-                # Формируем имя файла (например, "kpi_reports/Дисциплина_Инженерный.png")
+                # Формируем имя файла
                 filename = os.path.join(output_dir, f"{discipline}.png")
                 
                 # Сохраняем график в файл PNG
@@ -134,4 +181,4 @@ class KPIVisualizer:
             else:
                 print(f"В дисциплине '{discipline}' недостаточно данных для линейного графика (меньше 2 сотрудников).")
         
-        
+   
