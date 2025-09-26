@@ -230,7 +230,7 @@ def heatmap_common_suppliers(comparison_results):
     return
 
 
-def visualize_isolation_forest(analyzed_df):
+def visualize_isolation_forest(analyzed_df, OURPUT_DIR):
     if (
         "unit_price_in_eur" not in analyzed_df.columns
         or "total_price_in_eur" not in analyzed_df.columns
@@ -257,7 +257,7 @@ def visualize_isolation_forest(analyzed_df):
     grid_points = np.c_[xx.ravel(), yy.ravel()]
     scores = model.decision_function(grid_points).reshape(xx.shape)
 
-    output_dir = r"D:\Analysis-Results\efficient_analyses"
+    output_dir = OUTPUT
     os.makedirs(output_dir, exist_ok=True)
     output_file_path = os.path.join(output_dir, "isolation_forest_visualization.png")
 

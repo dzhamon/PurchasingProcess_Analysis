@@ -165,6 +165,7 @@ class Window(QMainWindow):
         self._hhi_error_message = None
         self._hhi_success_message = None
         self._hhi_results = None
+        self.OUTPUT_DIR = None
 
         # Загрузка подсказок
         self.menu_hints = load_menu_hints()
@@ -454,10 +455,6 @@ class Window(QMainWindow):
         self.suppliers_by_unit_price_action.triggered.connect(
             self.run_analyze_by_unit_price
         )
-        # self.find_cross_discipline_lotsAction.triggered.connect(
-        #     self.run_find_cross_discipline_lots
-        # )
-        # self.lotcount_peryearAction.triggered.connect(self.run_lotcount_peryear)
 
         # Подключение сигналов к методам Анализа данных по Контрактам
         self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
@@ -773,12 +770,19 @@ class Window(QMainWindow):
         self.hide_progress()
 
     def run_efficiency_analyses(self):
+        """
+        Анализ эффективности и поиск аномалий
+        """
         self.progress_bar.show()
         self.show_progress(10)
 
         from models_analyses.efficiency_analyses import main_method
+        from utils.config import BASE_DIR
+        
+        self.OUTPUT_DIR = os.path.join(BASE_DIR, 'Анализ эффективности исполнителей')
+        os.makedirs(self.OUTPUT_DIR, exist_ok=True)
 
-        main_method(self._current_filtered_df)
+        main_method(data_df=self._current_filtered_df, OUTPUT_DIR=self.OUTPUT_DIR)
         # Использует self._current_filtered_df - убедиться, что он заполнен
         self.show_progress(100)
         self.hide_progress()

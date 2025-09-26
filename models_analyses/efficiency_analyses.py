@@ -87,7 +87,7 @@ def analyze_efficiency(filtered_df):
 
 
 # детальный анализ аномальных лотов
-def detailed_anomaly_analysis(analyzed_df):
+def detailed_anomaly_analysis(analyzed_df, parent, OUTPUT_DIR):
 	"""
 	Метод для анализа аномальных лотов из analyzed_df.
 	"""
@@ -113,7 +113,7 @@ def detailed_anomaly_analysis(analyzed_df):
 		name="Anomalous Lots Count")
 	
 	# Визуализация actors_analysis и winners_analysis
-	output_folder =  'D:\Analysis-Results\efficient_analyses'
+	output_folder = OUTPUT_DIR
 	
 	top_winners = winners_analysis.nlargest(20, "Anomalous Lots Count")  # Топ-20 победителей
 	plt.figure(figsize=(16, len(top_winners) * 0.5))
@@ -153,21 +153,28 @@ def detailed_anomaly_analysis(analyzed_df):
 	plt.close()
 	print(f"Визуализация по исполнителям сохранена в: {actors_plot_path}")
 	
-	# 3. Сохранение результатов
-	output_folder = 'D:\Analysis-Results\efficient_analyses'
+	# 3. Сохранение результатов Используем save_dfs_to_Excel
+	output_folder = OUTPUT_DIR
 	if not os.path.exists(output_folder):
 		os.makedirs(output_folder)
 	
+	# Создаем словарь для сохранения
+	dfs_to_save = {"Аномальные Лоты": anomalous_summary,
+	               "Аномалии по исполнителям": actors_analysis,
+	               "Аномалии по постащикам": winners_analysis,
+	               }
+	# создаем путь к файлу
 	output_file = f"{output_folder}\Anomalous_Lots_Analysis.xlsx"
-	with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
-		anomalous_summary.to_excel(writer, sheet_name='Anomalous Lots', index=False)
-		actors_analysis.to_excel(writer, sheet_name='Actors Analysis', index=False)
-		winners_analysis.to_excel(writer, sheet_name='Winners Analysis', index=False)
-	
+	if not analyzed_df.empty:
+		# вызываем функцию для сохранения
+		from utils.save_dfs_to_Excel import save_multiple_dfs_to_excel
+		save_multiple_dfs_to_excel(dfs_to_save, output_file)
+	else:
+		QMessageBox.warning(parent, "Ошибка", f"Датафрейм {analyzed_df} пуст, сохранение в Excel не выполнено!")
 	print(f"Результаты анализа аномалий сохранены в файл: {output_file}")
 	return anomalous_summary, actors_analysis, winners_analysis
 
-def detailed_results_analyses(analyzed_df, anomaly_stats):
+def detailed_results_analyses(analyzed_df, anomaly_stats, OUTPUT_DIR):
 	# 1. Добавление границ, для выявления аномалий
 	k = 3  # Коэффициент чувствительности (например, 3 стандартных отклонения)
 	
@@ -201,7 +208,7 @@ def detailed_results_analyses(analyzed_df, anomaly_stats):
 	
 	# Шаг 3: Визуализация
 	# Директория для сохранения графика
-	output_dir = r"D:\Analysis-Results\efficient_analyses"
+	output_dir = OUTPUT_DIR
 	os.makedirs(output_dir, exist_ok=True)
 	
 	# Путь к файлу
@@ -224,7 +231,7 @@ def detailed_results_analyses(analyzed_df, anomaly_stats):
 	
 	print(f"График успешно сохранён в файл: {output_file_path}")
 	
-	# Шаг 4: Вывод аномальных точек
+	# Шаг 4: Вывод аномальных точек Здесь нужно использовать save_dfs_to_Excel
 	# Убедимся, что директория существует
 	output_dir = r"D:\Analysis-Results\efficient_analyses"
 	os.makedirs(output_dir, exist_ok=True)
@@ -238,11 +245,10 @@ def detailed_results_analyses(analyzed_df, anomaly_stats):
 
 
 # вызов функций из главного метода
-def main_method(data_df, parent_widget=None):
-	from utils.config import BASE_DIR
-	print("Мы вошли в метод main_method")
-	OUTPUT_DIR = os.path.join(BASE_DIR, 'efficient_analyses')
-	os.makedirs(OUTPUT_DIR, exist_ok=True)
+def main_method(data_df, OUTPUT_DIR=None, parent_widget=None):
+	"""
+		Головной метод анализа эффективности и поиска аномалий
+	"""
 	
 	# добираем товары выбранной категории в датафрейм
 	filtered_df = data_df.copy()
@@ -250,47 +256,59 @@ def main_method(data_df, parent_widget=None):
 	analyzed_df, stats = analyze_efficiency(filtered_df)
 	
 	# Сохранение анализа эффективности исполнителей
-	file_path = os.path.join(OUTPUT_DIR, "Efficiency_Metrics.xlsx")
-	print(f"Сохраняем файл в: {file_path}")
+	# Создаем словарь с датафреймами для сохранения
+	dfs_to_save = {'Анализ аномалий': analyzed_df,
+	               'Статистика по аномалиям': stats
+	               }
+	
+	# Проверяем, что analyzed_df не пустой
+	if not analyzed_df.empty:
+		# создаем путь к файлу
+		file_path = os.path.join(OUTPUT_DIR, "Efficiency_Metrics.xlsx")
+		
+		# вызываем функцию для сохранения
+		from utils.save_dfs_to_Excel import save_multiple_dfs_to_excel
+		save_multiple_dfs_to_excel(dfs_to_save, file_path)
+	else:
+		QMessageBox.warning(parent_widget, "Ошибка", f"Датафрейм {analyzed_df} пуст, сохранение в Excel не выполнено!")
+		return
 	
 	if not analyzed_df.empty:
-		file_saved = False
-		while not file_saved:
-			try:
-				# Сохраняем основной анализ
-				analyzed_df.to_excel(file_path, index=False)
-				print("Анализ эффективности исполнителей сохранен в файл 'Efficiency_Metrics.xlsx'")
-				
-				# Сохраняем статистику по аномалиям
-				with pd.ExcelWriter(file_path, engine='openpyxl', mode='a') as writer:
-					stats.to_excel(writer, sheet_name='Anomaly_Stats')
-				print("Статистика по аномалиям добавлена в файл 'Efficiency_Metrics.xlsx' на лист 'Anomaly_Stats'.")
-				
-				file_saved = True
-			except PermissionError:
-				print("Файл используется другой программой.")
-				msg_box = QMessageBox(parent_widget)
-				msg_box.setIcon(QMessageBox.Warning)
-				msg_box.setWindowTitle("Файл используется")
-				msg_box.setText(
-					"Файл 'Efficiency_Metrics.xlsx' уже используется другой программой.\nПожалуйста, закройте файл и нажмите OK для продолжения.")
-				msg_box.setStandardButtons(QMessageBox.Ok)
-				msg_box.exec_()
-			else:
-				print("Нет данных для анализа эффективности исполнителей для сохранения.")
-			
-			# занимаемся анализом аномальных лотов
-			detailed_anomaly_analysis(analyzed_df)
-			
-			# Визуализация Isolation Forest
-			visualize_isolation_forest(analyzed_df)
-			
-			# детальный анализ полученных результатов
-			detailed_results_analyses(analyzed_df, stats)
-			
-			
-			
-			return analyzed_df
+	# 	file_saved = False
+	# 	while not file_saved:
+	# 		try:
+	# 			# Сохраняем основной анализ
+	# 			analyzed_df.to_excel(file_path, index=False)
+	# 			print("Анализ эффективности исполнителей сохранен в файл 'Efficiency_Metrics.xlsx'")
+	#
+	# 			# Сохраняем статистику по аномалиям
+	# 			with pd.ExcelWriter(file_path, engine='openpyxl', mode='a') as writer:
+	# 				stats.to_excel(writer, sheet_name='Anomaly_Stats')
+	# 			print("Статистика по аномалиям добавлена в файл 'Efficiency_Metrics.xlsx' на лист 'Anomaly_Stats'.")
+	#
+	# 			file_saved = True
+	# 		except PermissionError:
+	# 			print("Файл используется другой программой.")
+	# 			msg_box = QMessageBox(parent_widget)
+	# 			msg_box.setIcon(QMessageBox.Warning)
+	# 			msg_box.setWindowTitle("Файл используется")
+	# 			msg_box.setText(
+	# 				"Файл 'Efficiency_Metrics.xlsx' уже используется другой программой.\nПожалуйста, закройте файл и нажмите OK для продолжения.")
+	# 			msg_box.setStandardButtons(QMessageBox.Ok)
+	# 			msg_box.exec_()
+	# 		else:
+	# 			print("Нет данных для анализа эффективности исполнителей для сохранения.")
+	#
+		# занимаемся анализом аномальных лотов
+		detailed_anomaly_analysis(analyzed_df, parent_widget, OUTPUT_DIR)
+	
+		# Визуализация Isolation Forest
+		visualize_isolation_forest(analyzed_df, OUTPUT_DIR)
+	
+		# детальный анализ полученных результатов
+		detailed_results_analyses(analyzed_df, stats, OUTPUT_DIR)
+	
+		return
 
 
 def display_dataframe_to_user(name, dataframe):
