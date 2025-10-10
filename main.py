@@ -27,7 +27,6 @@ from models_analyses.find_alternative_suppliers_enhanced import (
     AlternativeSuppliersAnalyzer,
     export_alternative_suppliers_to_excel,
 )
-
 from selection_dialog import SelectionDialog
 from styles import set_light_theme, set_fonts, load_stylesheet
 from utils.clean_datas import clean_database
@@ -41,12 +40,10 @@ from widgets.module_tab4 import Tab4Widget
 from widgets.module_tab5 import Tab5Widget
 from widgets.module_tab6 import Tab6Widget
 
-
 # Загрузка подсказок из JSON-файла
 def load_menu_hints():
     with open("menu_hints.json", "r", encoding="utf-8") as file:
         return json.load(file)
-
 
 def clicked_connect(self):
     """эта функция вызывает метод open_file из класса Data_model модуля data_model.py"""
@@ -166,6 +163,7 @@ class Window(QMainWindow):
         self._hhi_success_message = None
         self._hhi_results = None
         self.OUTPUT_DIR = None
+        self.parent_widget = None
 
         # Загрузка подсказок
         self.menu_hints = load_menu_hints()
@@ -616,35 +614,21 @@ class Window(QMainWindow):
 
     def run_ClusterAnalyze(self):
         # Метод для классификации поставщиков
-        from models_analyses.clusterAnalysis_suppliers import (
-            run_enhanced_supplier_clustering,
-        )
+        from models_analyses.clusterAnalysis_suppliers import run_enhanced_supplier_clustering
+        from utils.config import BASE_DIR
 
         if self._current_filtered_df is not None:
             self.progress_bar.show()
             self.show_progress(10)
 
-            output_dir = r"D:\Analysis-Results\suppliers_cluster_analysis"
-            os.makedirs(output_dir, exist_ok=True)
+            OUT_DIR = BASE_DIR
+            self.output_dir = os.path.join(OUT_DIR, "Кластер-анализ Поставщиков")
+            os.makedirs(self.output_dir, exist_ok=True)
 
             self.show_progress(30)
-
-            # Конвертируем цены за единицу и суммы контрактов в единую валюту EUR
-            converter = CurrencyConverter()
-            columns_info = [
-                (
-                    "total_contract_amount",
-                    "contract_currency",
-                    "total_contract_amount_eur",
-                ),
-                ("unit_price", "contract_currency", "unit_price_eur"),
-            ]
-            contracts_data = converter.convert_multiple_columns(
-                self._current_filtered_df, columns_info
-            )
-
-            supplier_clusters, analyzer = run_enhanced_supplier_clustering(
-                contracts_data
+            # supplier_clusters, analyzer =
+            run_enhanced_supplier_clustering(
+                self._current_filtered_df, output_dir=self.output_dir
             )
 
     def run_analyze_supplier_friquency(self):
@@ -783,7 +767,7 @@ class Window(QMainWindow):
         os.makedirs(self.OUTPUT_DIR, exist_ok=True)
 
         main_method(data_df=self._current_filtered_df, OUTPUT_DIR=self.OUTPUT_DIR)
-        # Использует self._current_filtered_df - убедиться, что он заполнен
+        
         self.show_progress(100)
         self.hide_progress()
 

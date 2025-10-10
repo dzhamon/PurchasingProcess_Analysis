@@ -14,7 +14,7 @@ def save_multiple_dfs_to_excel(dfs_dict, file_name):
     Args:
         dfs_dict (dict): Словарь, где ключи - названия листов,
                         а значения - соответствующие pd.DataFrame.
-        file_name (str): Имя выходного Excel-файла (например, 'multi_sheet_report.xlsx').
+        file_name (str): Имя выходного Excel-файла (например, 'multi_sheet_report.xlsx')
     """
     try:
         # Шаг 1: Записываем каждый DataFrame на отдельный лист
@@ -48,7 +48,7 @@ def save_multiple_dfs_to_excel(dfs_dict, file_name):
         
         # Шаг 4: Сохраняем итоговый файл
         book.save(file_name)
-        print("Все DataFrame успешно сохранены и отформатированы  {file_name}")
+        print(f"Все DataFrame успешно сохранены и отформатированы  {file_name}")
     except Exception as e:
         print("Произошла ошибка при сохранении файла")
     

@@ -230,17 +230,17 @@ def heatmap_common_suppliers(comparison_results):
     return
 
 
-def visualize_isolation_forest(analyzed_df, OURPUT_DIR):
+def visualize_isolation_forest(analyzed_df, OUTPUT_DIR):
     if (
-        "unit_price_in_eur" not in analyzed_df.columns
-        or "total_price_in_eur" not in analyzed_df.columns
+        "unit_price_eur" not in analyzed_df.columns
+        or "total_price_eur" not in analyzed_df.columns
     ):
         print(
-            "Для визуализации нужны столбцы 'unit_price_in_eur' и 'total_price_in_eur'"
+            "Для визуализации нужны столбцы 'unit_price_eur' и 'total_price_eur'"
         )
         return
 
-    data = analyzed_df[["unit_price_in_eur", "total_price_in_eur"]].dropna()
+    data = analyzed_df[["unit_price_eur", "total_price_eur"]].dropna()
 
     model = IsolationForest(contamination=0.05, random_state=42)
     model.fit(data)
@@ -248,43 +248,60 @@ def visualize_isolation_forest(analyzed_df, OURPUT_DIR):
 
     xx, yy = np.meshgrid(
         np.linspace(
-            data["unit_price_in_eur"].min(), data["unit_price_in_eur"].max(), 100
+            data["unit_price_eur"].min(), data["unit_price_eur"].max(), 100
         ),
         np.linspace(
-            data["total_price_in_eur"].min(), data["total_price_in_eur"].max(), 100
+            data["total_price_eur"].min(), data["total_price_eur"].max(), 100
         ),
     )
+    
     grid_points = np.c_[xx.ravel(), yy.ravel()]
-    scores = model.decision_function(grid_points).reshape(xx.shape)
+    grid_df = pd.DataFrame(grid_points, columns=["unit_price_eur", "total_price_eur"])
+    scores = model.decision_function(grid_df).reshape(xx.shape)
 
-    output_dir = OUTPUT
+    output_dir = OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
     output_file_path = os.path.join(output_dir, "isolation_forest_visualization.png")
-
+    
+    # Фильтруем данные на нормальные и аномальные
+    normal_data = data[data["is_anomaly"] == 1]
+    anomaly_data = data[data["is_anomaly"] == -1]
+    
+    # создаем график
     plt.figure(figsize=(10, 8))
-
+    
+    # Рисуем фон с помощью contourf
     plt.contourf(xx, yy, scores, levels=50, cmap=plt.cm.RdYlBu_r, alpha=0.6)
-
+    
+    # рисуем нормальные точки (исправленная строка)
     plt.scatter(
-        data["unit_price_in_eur"],
-        data["total_price_in_eur"],
-        c=data["is_anomaly"].map({1: "blue", -1: "red"}),
+        normal_data["unit_price_eur"],
+        normal_data["total_price_eur"],
+        c="blue",
         edgecolors="k",
         alpha=0.8,
-        label="Data Points",
+        label="Normal",
     )
-
+    
+    # рисуем аномальные точки
+    plt.scatter(
+        anomaly_data["unit_price_eur"],
+        anomaly_data["total_price_eur"],
+        c="red",
+        edgecolors="k",
+        alpha=0.8,
+        label="Anomalies",
+    )
+    
     plt.title("Isolation Forest - Visualization of Anomalies")
     plt.xlabel("Unit Price (EUR)")
     plt.ylabel("Total Price (EUR)")
-    plt.colorbar(label="Anomaly Score")
-    plt.legend(["Normal", "Anomalies"], loc="upper right")
     plt.grid(True)
+    plt.legend()
     plt.tight_layout()
-
+    
     plt.savefig(output_file_path, format="png", dpi=300)
     plt.close()
-
     print(f"График успешно сохранён в файл: {output_file_path}")
 
 
