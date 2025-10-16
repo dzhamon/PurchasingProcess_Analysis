@@ -13,12 +13,13 @@ import warnings
 warnings.filterwarnings("ignore")
 
 class EnhancedSupplierClusterAnalyzer:
-    def __init__(self, df, column_mapping=None):
+    def __init__(self, df, output_dir, column_mapping=None):
         self.df = df.copy()
         self.scaler = StandardScaler()
         self.normal_clusters = None
         self.outlier_suppliers = None
         self.cluster_centers = None
+        self.output_dir = output_dir
 
     def prepare_enhanced_supplier_features(self):
         """
@@ -312,7 +313,13 @@ class EnhancedSupplierClusterAnalyzer:
         ax2.grid(True)
 
         plt.tight_layout()
-        plt.show()
+        
+        # Сохранение графика в PNG файл
+        import os
+        
+        plot_filename = os.path.join(self.output_dir, "Методы Локтя и Силуэта.png")
+        fig.savefig(plot_filename)
+        plt.close(fig)  # Закрываем фигуру, чтобы она не отображалась
 
         # Рекомендуем оптимальное k
         optimal_k = K_range[np.argmax(silhouette_scores)]
@@ -366,7 +373,7 @@ class EnhancedSupplierClusterAnalyzer:
         # Поиск оптимального количества кластеров (но не менее 5)
         if n_clusters is None:
             optimal_k = self.find_optimal_clusters(normal_features_scaled, max_clusters=8)
-            n_clusters = max(optimal_k, 5) # минимум 5 кластеров
+            n_clusters = max(optimal_k, 6) # минимум 5 кластеров
         
         print(f"🎯 Используем {n_clusters} кластеров")
 
@@ -508,7 +515,6 @@ class EnhancedSupplierClusterAnalyzer:
         # 1. Создание папки, если она не существует
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-            print(f"✅ Создана папка для результатов: {output_folder}")
     
         # Подготовка данных для PCA (Principal Component Analysis) или Метод Главных Компонент
         features = self.normal_clusters[self.feature_columns]
@@ -601,68 +607,11 @@ class EnhancedSupplierClusterAnalyzer:
         full_path_visualization = os.path.join(output_folder, "cluster_visualization.png")
         plt.savefig(full_path_visualization)
     
-        plt.show()
-    
         print(f"✅ Графики визуализации сохранены в: {full_path_visualization}")
         print(f"PCA объясняет {pca.explained_variance_ratio_.sum():.1%} дисперсии")
         print(f"Использовано {len(self.feature_columns)} признаков для кластеризации")
 
-    def get_enhanced_recommendations(self):
-        """Расширенные рекомендации по работе с кластерами"""
-        if self.normal_clusters is None:
-            print("Сначала выполните кластеризацию!")
-            return
-
-        recommendations = {
-            "🏆 PREMIUM": [
-                "Развивать долгосрочное стратегическое партнерство",
-                "Предоставлять приоритет в новых тендерах",
-                "Заключать рамочные соглашения на выгодных условиях",
-                "Регулярные встречи для стратегического планирования",
-                "Совместная разработка инновационных решений",
-            ],
-            "⚡ КРУПНЫЕ": [
-                "Работать над стабилизацией цен",
-                "Заключать договоры с фиксированными ценами",
-                "Усиленный контроль качества",
-                "Диверсификация рисков через других поставщиков",
-                "Регулярный мониторинг финансового состояния",
-            ],
-            "🔄 АКТИВНЫЕ": [
-                "Автоматизировать процессы заказа",
-                "Внедрить EDI-системы",
-                "Оптимизировать логистику",
-                "Создать каталоги стандартных позиций",
-                "Упростить процедуры согласования",
-            ],
-            "🎯 СПЕЦИАЛИЗИРОВАННЫЕ": [
-                "Углублять экспертизу в их области",
-                "Привлекать к консультациям по техническим решениям",
-                "Развивать эксклюзивные партнерства",
-                "Совместное участие в выставках и конференциях",
-            ],
-            "🆕 НОВЫЕ": [
-                "Тщательная проверка надежности",
-                "Начинать с небольших заказов",
-                "Регулярный мониторинг выполнения",
-                "Обучение корпоративным стандартам",
-                "Постепенное увеличение объемов при успешной работе",
-            ],
-            "📉 РЕДКИЕ": [
-                "Пересмотреть необходимость сотрудничества",
-                "Найти более активных поставщиков",
-                "Минимизировать административные затраты",
-                "Использовать только для экстренных случаев",
-                "Рассмотреть консолидацию с другими поставщиками",
-            ],
-        }
-
-        print("=== РАСШИРЕННЫЕ РЕКОМЕНДАЦИИ ПО КЛАСТЕРАМ ===")
-        for category, recs in recommendations.items():
-            print(f"\n{category}:")
-            for i, rec in enumerate(recs, 1):
-                print(f"  {i}. {rec}")
-
+    
     def save_results_to_excel(self, output_folder):
         """
         Сохраняет результаты кластеризации и сводную статистику в Excel-файлы.
@@ -676,6 +625,7 @@ class EnhancedSupplierClusterAnalyzer:
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
             print(f"✅ Создана папка для результатов: {output_folder}")
+            
 
         # 1. Сохранение всех данных с кластерами
         full_path_clusters = os.path.join(output_folder, "supplier_clusters.xlsx")
@@ -704,22 +654,22 @@ class EnhancedSupplierClusterAnalyzer:
         if self.normal_clusters is None:
             print("Сначала выполните кластеризацию!")
             return
-    
+
         import os
         import pandas as pd
-    
+
         # Создание папки, если она не существует
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
             print(f"✅ Создана папка для результатов: {output_folder}")
-    
+
         # Подготовка данных для сохранения
         interpretation_data = []
-    
+
         # Цикл по кластерам
         for cluster_id in sorted(self.normal_clusters["cluster"].unique()):
             cluster_data = self.normal_clusters[self.normal_clusters["cluster"] == cluster_id]
-    
+
             # Расчет характеристик кластера
             avg_volume = cluster_data["total_volume"].mean()
             avg_volatility = (
@@ -730,7 +680,7 @@ class EnhancedSupplierClusterAnalyzer:
             avg_projects = cluster_data["projects_count"].mean()
             avg_contracts = cluster_data["contracts_count"].mean()
             avg_years = cluster_data["years_active"].mean()
-    
+
             # Определение категории
             if avg_volume > self.normal_clusters["total_volume"].quantile(0.8):
                 if avg_volatility < 0.2 and avg_years > 2:
@@ -750,12 +700,12 @@ class EnhancedSupplierClusterAnalyzer:
                 category = "🎯 УЗКОСПЕЦИАЛИЗИРОВАННЫЕ (работают в одном проекте)"
             else:
                 category = "📉 РЕДКИЕ (нерегулярные поставщики)"
-    
+
             # Получение топ-поставщиков
             top_suppliers = cluster_data.nlargest(5, "total_volume")[
                 "counterparty_name"
             ].tolist()
-    
+
             # Добавление данных в список
             interpretation_data.append(
                 {
@@ -770,19 +720,20 @@ class EnhancedSupplierClusterAnalyzer:
                     "Top Suppliers": ", ".join(top_suppliers),
                 }
             )
-    
+
         # Создание DataFrame из собранных данных
         interpretation_df = pd.DataFrame(interpretation_data)
-    
+
         # Сохранение в Excel
         full_path_interpretation = os.path.join(
             output_folder, "cluster_interpretation.xlsx"
         )
         interpretation_df.to_excel(full_path_interpretation, index=False)
-    
+
         print(
             f"✅ Детальная интерпретация кластеров сохранена в: {full_path_interpretation}"
         )
+        return
 
     def save_cluster_details_to_excel(self, output_dir):
         """
@@ -792,9 +743,62 @@ class EnhancedSupplierClusterAnalyzer:
         """
         import os
         import pandas as pd
-        os.makedirs(output_dir, exist_ok=True)
-        file_path = os.path.join(output_dir, "ClusterAnalysis_Suppliers.xlsx")
+        
         try:
+            os.makedirs(output_dir, exist_ok=True)
+            file_path = os.path.join(output_dir, "ClusterAnalysis_Suppliers.xlsx")
+            
+            # Словарь с рекомендациями
+            recommendations_map = {
+                "PREMIUM (крупные, стабильные, опытные)": [
+                    "Развивать долгосрочное стратегическое партнерство",
+                    "Предоставлять приоритет в новых тендерах",
+                    "Заключать рамочные соглашения на выгодных условиях",
+                    "Регулярные встречи для стратегического планирования",
+                    "Совместная разработка инновационных решений",
+                ],
+                "КРУПНЫЕ (высокий объем, но нестабильные)": [
+                    "Работать над стабилизацией цен",
+                    "Заключать договоры с фиксированными ценами",
+                    "Усиленный контроль качества",
+                    "Диверсификация рисков через других поставщиков",
+                    "Регулярный мониторинг финансового состояния",
+                ],
+                 "АКТИВНЫЕ УНИВЕРСАЛЫ (частые заказы, много проектов)": [
+                    "Автоматизировать процессы заказа",
+                    "Внедрить EDI-системы",
+                    "Оптимизировать логистику",
+                    "Создать каталоги стандартных позиций",
+                    "Упростить процедуры согласования",
+                ],
+                "СПЕЦИАЛИЗИРОВАННЫЕ (частые заказы, узкая специализация)": [
+                    "Углублять экспертизу в их области",
+                    "Привлекать к консультациям по техническим решениям",
+                    "Развивать эксклюзивные партнерства",
+                    "Совместное участие в выставках и конференциях",
+                ],
+                "НОВЫЕ (недавно начали работать)": [
+                    "Тщательная проверка надежности",
+                    "Начинать с небольших заказов",
+                    "Регулярный мониторинг выполнения",
+                    "Обучение корпоративным стандартам",
+                    "Постепенное увеличение объемов при успешной работе",
+                ],
+                 "РЕДКИЕ (нерегулярные поставщики)": [
+                    "Пересмотреть необходимость сотрудничества",
+                    "Найти более активных поставщиков",
+                    "Минимизировать административные затраты",
+                    "Использовать только для экстренных случаев",
+                    "Рассмотреть консолидацию с другими поставщиками",
+                ],
+                "УЗКОСПЕЦИАЛИЗИРОВАННЫЕ (работают в одном проекте)": [
+                    "Углублять экспертизу в их области",
+                    "Привлекать к консультациям по техническим решениям",
+                    "Развивать эксклюзивные партнерства",
+                    "Совместное участие в выставках и конференциях",
+                ]
+            }
+        
             # Создаем объект ExcelWriter
             with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
                 # Создаем формат для числовых значений
@@ -826,7 +830,7 @@ class EnhancedSupplierClusterAnalyzer:
                 # Получаем объект листа и применяем формат к числовым столбцам (начиная в B)
                 worksheet_summary = writer.sheets["Сводная по кластерам"]
                 worksheet_summary.set_column('B:Z', None, number_format)
-                print("✅ Сводная статистика по кластерам сохранена.")
+                print("Сводная статистика по кластерам сохранена.")
     
                 # 2. Запись детальной информации для каждого кластера
                 for cluster_id in sorted(self.normal_clusters["cluster"].unique()):
@@ -870,6 +874,40 @@ class EnhancedSupplierClusterAnalyzer:
                         },
                         inplace=True,
                     )
+                    # Определение категории и получение рекомендаций
+                    avg_volume = cluster_data["total_volume"].mean()
+                    avg_volatility = (
+                        cluster_data["price_volatility"].mean()
+                        if "price_volatility" in cluster_data.columns
+                        else 0
+                    )
+                    avg_volume = cluster_data["total_volume"].mean()
+                    avg_volatility = cluster_data["price_volatility"].mean()
+                    avg_years = cluster_data["years_active"].mean()
+                    avg_contracts = cluster_data["contracts_count"].mean()
+                    avg_projects = cluster_data["projects_count"].mean()
+                    
+                    # Логика определения категории
+                    if avg_volume > self.normal_clusters["total_volume"].quantile(0.8):
+                        if avg_volatility < 0.2 and avg_years > 2:
+                            category = "PREMIUM (крупные, стабильные, опытные)"
+                        else:
+                            category = "КРУПНЫЕ (высокий объем, но нестабильные)"
+                    elif avg_contracts > self.normal_clusters["contracts_count"].quantile(0.7):
+                        if avg_projects > 3:
+                            category = "АКТИВНЫЕ УНИВЕРСАЛЫ (частые заказы, много проектов)"
+                        else:
+                            category = "СПЕЦИАЛИЗИРОВАННЫЕ (частые заказы, узкая специализация)"
+                    elif avg_years < 1:
+                        category = "НОВЫЕ (недавно начали работать)"
+                    elif avg_projects == 1:
+                        category = "УЗКОСПЕЦИАЛИЗИРОВАННЫЕ (работают в одном проекте)"
+                    else:
+                        category = "РЕДКИЕ (нерегулярные поставщики)"
+                        
+                    recs_list = recommendations_map.get(category, [])
+                    recs_df = pd.DataFrame(recs_list, columns=[f"Рекомендации для {category}"])
+                    
                     # Имя листа
                     sheet_name = f"Кластер {cluster_id}"
     
@@ -884,6 +922,19 @@ class EnhancedSupplierClusterAnalyzer:
                         startcol=0,
                         index=False,
                     )
+                    # Запись рекомендаций
+                    if not recs_df.empty:
+                        start_row_recs = len(summary_df) + len(top_suppliers_df) + 4
+                        recs_df.to_excel(
+                            writer,
+                            sheet_name = sheet_name,
+                            startrow = start_row_recs,
+                            startcol = 0,
+                            index = False,
+                        )
+                        worksheet = writer.sheets[sheet_name]
+                        worksheet.write(start_row_recs - 1, 0, "Рекомендации:")
+                        
                     # Получаем объект листа
                     worksheet = writer.sheets[sheet_name]
                     # Форматируем столбец "Значение" в summary_df (столбец B)
@@ -915,7 +966,7 @@ class EnhancedSupplierClusterAnalyzer:
             print(f"❌ Произошла ошибка при сохранении в Excel: {e}")
 
 
-def run_enhanced_supplier_clustering(df, output_dir):
+def run_enhanced_supplier_clustering(df, output_dir, main_instance):
     """
     Запуск полного расширенного анализа кластеризации поставщиков
     """
@@ -932,23 +983,25 @@ def run_enhanced_supplier_clustering(df, output_dir):
     
     df = converter.convert_multiple_columns(df, columns_info)
 
-    analyzer = EnhancedSupplierClusterAnalyzer(df)
+    analyzer = EnhancedSupplierClusterAnalyzer(df, output_dir)
 
     # Выполняем кластеризацию
     supplier_clusters = analyzer.cluster_suppliers()
+    main_instance.show_progress(40)
     
     # Анализируем результаты
     cluster_summary = analyzer.analyze_enhanced_clusters()
+    main_instance.show_progress(60)
 
     # Визуализируем
     analyzer.visualize_enhanced_clusters(output_dir)
-
-    # Получаем рекомендации
-    analyzer.get_enhanced_recommendations()
+    main_instance.show_progress(70)
+    
 
     # Сохраняем результаты в Excel
     analyzer.save_cluster_details_to_excel(output_dir)
+    main_instance.show_progress(80)
     analyzer.save_results_to_excel(output_dir)
+    main_instance.show_progress(90)
     analyzer.save_cluster_interpretation_to_excel(output_dir)
-
-    return supplier_clusters, analyzer
+    return "Анализ завершен успешно!"

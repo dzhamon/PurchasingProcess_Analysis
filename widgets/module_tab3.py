@@ -18,8 +18,10 @@ class Tab3Widget(QWidget):
 	filtered_data_changed = pyqtSignal(pd.DataFrame)
 	my_custom_signal = pyqtSignal(pd.DataFrame)
 	
-	def __init__(self):
-		super().__init__()
+	def __init__(self, progress_bar, show_progress_method, parent=None):
+		super().__init__(parent)
+		self.progress_bar = progress_bar
+		self.show_progress = show_progress_method
 		self.contract_df = pd.DataFrame()
 		self.base_contract_df = pd.DataFrame
 		self.init_ui()  # инициализация пользовательского интерфейса
@@ -94,6 +96,9 @@ class Tab3Widget(QWidget):
 			return
 		
 		else:
+			# визуализируем процесс загрузки данных
+			self.progress_bar.show()
+			self.show_progress(10)
 			# Если данные есть - загружаем их
 			query = f"""
 					SELECT * FROM data_contract
@@ -113,15 +118,25 @@ class Tab3Widget(QWidget):
 				'discipline': 'string',
 			}, params=(start_date, end_date))
 			
+			# закрыть соединение с базой данных
+			
+			self.show_progress(20)
+			
 			# очистка данных DtaFrame contract_df
 			self.contract_df = clean_contract_data(self.contract_df)
+			
+			self.show_progress(40)
 			
 			# Создаем новый датафрейм, в который копируем только что скачанный contract_df.
 			# Он понадобится в дальнейшем анализе - методе Херфиндаля-Хиршмана при поиске альтернативных поставщиков
 			self.base_contract_df = self.contract_df.copy()
 			
+			self.show_progress(50)
+			
 			# Испускаем сигнал для передачи датафрейма в метод анализа
 			self.my_custom_signal.emit(self.base_contract_df)   #сигнал должен быть пойман в методе
+			
+			self.show_progress(60)
 			
 			# Созданный base_contract_df нужно передать в модуль анализа
 			
@@ -135,14 +150,21 @@ class Tab3Widget(QWidget):
 		# закрыть соединение с базой данных
 		conn.close()
 		
+		self.show_progress(70)
+		
 		cont_df = self.contract_df.copy()
 		
 		# объединяем данные
 		self.merged_df = pd.merge(cont_df, kp_unique_projects, on='lot_number', how='left')  # Важно: how='left'
 		
+		self.show_progress(80)
+		
 		# Испускаем сигнал с данными и выводим в Tab4
 		self.filtered_data_changed.emit(self.merged_df)
 		self.display_data(self.merged_df)
+		
+		self.show_progress(100)
+		self.progress_bar.hide()
 	
 	def display_data(self, df):
 		if df.empty:

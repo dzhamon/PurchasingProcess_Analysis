@@ -51,12 +51,15 @@ def clicked_connect(self):
 
 
 class MyTabWidget(QWidget):
-    def __init__(self):
+    def __init__(self, progress_bar, show_progress_method):
         super().__init__()
         self.notebook = QTabWidget()
         layout = QVBoxLayout(self)
         layout.addWidget(self.notebook)
         self.setLayout(layout)
+        
+        self.progress_bar = progress_bar
+        self.show_progress = show_progress_method
 
         # Инициализация QLabel для отображения подсказок
         self.tooltip_label = QLabel(self)
@@ -98,7 +101,9 @@ class MyTabWidget(QWidget):
 
     def setup_tabs(self):
         # создание отдельных вкладок
-        tab1 = Tab1Widget()
+        tab1 = Tab1Widget(progress_bar=self.progress_bar,
+                          show_progress_method=self.show_progress
+        )
         params_for_tab2 = [
             "lot_number",
             "project_name",
@@ -111,7 +116,9 @@ class MyTabWidget(QWidget):
         tab2 = Tab2Widget(params_for_tab2)
         tab2.data_ready_for_analysis.connect(self.handle_analysis_data)
         # tab2.filtered_data_changed.connect(self.tab_widget.handle_secondary_data)
-        tab3 = Tab3Widget()
+        tab3 = Tab3Widget(progress_bar=self.progress_bar,
+                          show_progress_method=self.show_progress
+        )
         params_for_tab4 = [
             "lot_number",
             "discipline",
@@ -156,6 +163,16 @@ class MyTabWidget(QWidget):
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
+        #1. Create progress_bar and status_bar
+        self.status_bar = QStatusBar(self)
+        self.progress_bar = QProgressBar(self)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+        self.setStatusBar(self.status_bar)
+        
+        # Создание и установка вкладок
+        self.tab_widget = MyTabWidget(self.progress_bar, self.show_progress)
+        self.setCentralWidget(self.tab_widget)
+        
         self.data_df = None
         self.contract_df = None
         self.filtered_df = None
@@ -167,36 +184,42 @@ class Window(QMainWindow):
 
         # Загрузка подсказок
         self.menu_hints = load_menu_hints()
-
-        # Создание и установка вкладок
-        self.tab_widget = MyTabWidget()
-        self.setCentralWidget(self.tab_widget)
+        
+        # Создание статусной строки и прогрессбара
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setValue(0)
 
         # Создадим экземпляры вкладок
-        self.tab1 = Tab1Widget()
-        # self.tab2 = Tab2Widget()
+        # self.tab1 = Tab1Widget(progress_bar=self.progress_bar)
 
         # Подключение сигнала для обновления данных между вкладками
-        tab1_widget = self.tab_widget.notebook.widget(
-            0
-        )  # Получаем первый виджет вкладки
-
-        # Подключение сигнала из Tab1Widget напрямую к слоту в MainWindow
-        self.tab1.filtered_data_changed.connect(self.set_filtered_data)
-        print("Соединение установлено. Данные получены")
+        tab1_widget = self.tab_widget.notebook.widget(0)  # Получаем первый виджет вкладки
+        
+        if isinstance(tab1_widget, Tab1Widget):
+            tab1_widget.filtered_data_changed.connect(self.set_filtered_data)
+            # Подключение сигнала из Tab1Widget напрямую к слоту в MainWindow
+            self.tab_widget.notebook.widget(0).filtered_data_changed.connect(self.set_filtered_data)
+            print("Соединение установлено. Данные получены")
 
         if isinstance(tab1_widget, Tab1Widget):
             tab1_widget.filtered_data_changed.connect(self.update_tab2_data)
 
         # Подключение сигнала для получения отфильтрованных данных
-        tab2_widget = self.tab_widget.notebook.widget(
-            1
-        )  # Получаем второй виджет вкладки (Tab2)
+        tab2_widget = self.tab_widget.notebook.widget(1)  # Получаем второй виджет вкладки (Tab2)
         if isinstance(tab2_widget, Tab2Widget):
             tab2_widget.data_ready_for_analysis.connect(self.set_filtered_data)
 
         # Подключение сигнала для обновления данных между вкладками
         tab3_widget = self.tab_widget.notebook.widget(2)  # получаем Tab3Widget
+        if isinstance(tab3_widget, Tab1Widget):
+            tab3_widget.filtered_data_changed.connect(self.set_filtered_data)
+            # Подключение сигнала из Tab3Widget напрямую к слоту в MainWindow
+            self.tab_widget.notebook.widget(2).filtered_data_changed.connect(
+                self.set_filtered_data
+            )
+            print("Соединение установлено. Данные получены")
+        
         tab4_widget = self.tab_widget.notebook.widget(3)
         if isinstance(tab4_widget, Tab4Widget):
             tab4_widget.data_ready_for_analysis.connect(self.set_filtered_data)
@@ -226,15 +249,9 @@ class Window(QMainWindow):
         self._createActions()
         self._createMenuBar()
         self._connectActions()
-
-        # Создание статусной строки и прогрессбара
-        self.status_bar = QStatusBar(self)
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(100)
-        self.progress_bar.setValue(0)
-        self.status_bar.addPermanentWidget(self.progress_bar)
-        self.setStatusBar(self.status_bar)
+        
+    def show_progress(self, value):
+        self.progress_bar.setValue(value)
 
     def update_tab2_data(self, filtered_df):
         self.tab_widget.notebook.widget(1).update_data(filtered_df)
@@ -626,10 +643,15 @@ class Window(QMainWindow):
             os.makedirs(self.output_dir, exist_ok=True)
 
             self.show_progress(30)
-            # supplier_clusters, analyzer =
-            run_enhanced_supplier_clustering(
-                self._current_filtered_df, output_dir=self.output_dir
-            )
+    
+            result_message = run_enhanced_supplier_clustering(
+                self._current_filtered_df, self.output_dir, self)
+            self.show_progress(100)
+            self.progress_bar.hide()
+            
+            QMessageBox.information(self, "Завершение анализа", result_message)
+            
+            
 
     def run_analyze_supplier_friquency(self):
         # Метод для анализа частоты выбора поставщиков

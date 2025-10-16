@@ -17,8 +17,10 @@ class Tab1Widget(QWidget):
 	# Определяем сигнал, который будет испускаться при изменении фильтрованных данных
 	filtered_data_changed = pyqtSignal(pd.DataFrame)
 	
-	def __init__(self):
-		super().__init__()
+	def __init__(self, progress_bar, show_progress_method, parent=None):
+		super().__init__(parent)
+		self.progress_bar = progress_bar
+		self.show_progress = show_progress_method
 		self.data_df = pd.DataFrame()
 		self.init_ui()  # инициализация пользовательского интерфейса
 	
@@ -59,10 +61,6 @@ class Tab1Widget(QWidget):
 		start_date = self.start_date_edit.date().toPyDate()
 		end_date = self.end_date_edit.date().toPyDate()
 		
-		# # Преобразуем даты в datetime64[ns]
-		# start_date = pd.to_datetime(start_date)
-		# end_date = pd.to_datetime(end_date)
-		
 		# Проверяем корректность диапазона дат
 		if start_date > end_date:
 			QMessageBox.warning(self, "Предупреждение",
@@ -90,6 +88,11 @@ class Tab1Widget(QWidget):
 			self.start_date_edit.setDate(QDate.currentDate().addMonths(-1))
 			self.end_date_edit.setDate(QDate.currentDate())
 			return
+		
+		# визуализируем процесс загрузки данных
+		self.progress_bar.show()
+		self.show_progress(10)
+		
 		# Если данные есть - загружаем их
 		query = f"""
 		SELECT * FROM data_kp
@@ -100,12 +103,20 @@ class Tab1Widget(QWidget):
 		# закрыть соединение с базой данных
 		conn.close()
 		
-		self.data_df = cleanDataDF(self.data_df)  # очистка данных полученного df
+		self.show_progress(20)
+		
+		self.data_df = cleanDataDF(self.data_df, self)  # очистка данных полученного df
+		
+		self.show_progress(70)
+		
 		
 		# Сигнал и отображение
 		self.filtered_data_changed.emit(self.data_df)
 		
 		self.display_data(self.data_df)
+		
+		self.show_progress(100)
+		self.progress_bar.hide()
 	
 	def display_data(self, data_df):
 		if data_df.empty:

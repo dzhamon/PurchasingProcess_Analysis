@@ -71,12 +71,15 @@ def normalize_company_name(name: str) -> str:
 	return company_lookup.get(name, name)
 
 
-def cleanDataDF(data_df):
+def cleanDataDF(data_df, main_instance):
+	
 	# Удаляем строки, где good_name, winner_name, discipline, currency являются None
 	data_df = data_df.dropna(subset=['good_name', 'winner_name', 'discipline', 'currency'])
 	# Удаляем строки, где unit_price или total_price равны 0.0
 	data_df = data_df[data_df['unit_price'] != 0.0]
 	data_df = data_df[data_df['total_price'] != 0.0]
+	
+	main_instance.show_progress(30)
 	
 	# Удаляем дубликаты
 	data_df = data_df.drop_duplicates()
@@ -88,6 +91,8 @@ def cleanDataDF(data_df):
 			if col not in numeric_cols:
 				numeric_cols.append(col)
 	numeric_cols = list(set(numeric_cols)) # удаляются дубликаты
+	
+	main_instance.show_progress(40)
 	
 	# итерируемся по числовым столбцам и очищаем, а затем преобразуем
 	for col in numeric_cols:
@@ -107,6 +112,8 @@ def cleanDataDF(data_df):
 				pass
 		else:
 			print(f" Предупреждение: Числовой столбец '{col}' не найден.")
+	
+	main_instance.show_progress(50)
 
 	# Удалим в наименованиях поставщиков нежелательные фразы
 	data_df['winner_name'] = data_df['winner_name'].apply(normalize_winner_name)
