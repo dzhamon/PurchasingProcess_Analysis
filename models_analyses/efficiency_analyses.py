@@ -13,57 +13,66 @@ import os
 
 
 # 2. Анализ эффективности исполнителей
-def analyze_efficiency(filtered_df, OUTPUT_DIR):
+def analyze_efficiency(filtered_df):
 	print('Запускается метод analyze_efficiency')
-	
-	output_dir = OUTPUT_DIR
 	
 	# Проверка на пустые или некорректные значения
 	filtered_df = filtered_df.dropna(subset=['unit_price', 'currency', 'total_price', 'supplier_qty'])
 	filtered_df = filtered_df[filtered_df['unit_price'] > 0]
-
+	
+	# Конвертация валют
+	columns_info = [
+		('unit_price', 'currency', 'unit_price_in_eur'),
+		('total_price', 'currency', 'total_price_in_eur')
+	]
+	converter = CurrencyConverter()
+	filtered_df = converter.convert_multiple_columns(filtered_df, columns_info=columns_info)
 	
 	# Проверяем данные для модели
-	model_columns = ['unit_price_eur', 'total_price_eur', 'supplier_qty']
+	model_columns = ['unit_price_in_eur', 'total_price_in_eur', 'supplier_qty']
 	if filtered_df[model_columns].isnull().any().any():
 		raise ValueError("Входные данные для модели содержат пропущенные значения.")
 	
 	# Вызываем Isolation Forest для аномалий
 	model = IsolationForest(contamination=0.05, random_state=42)
 	filtered_df['is_anomaly'] = model.fit_predict(
-		filtered_df[['unit_price_eur', 'total_price_eur', 'supplier_qty']])
+		filtered_df[['unit_price_in_eur', 'total_price_in_eur', 'supplier_qty']])
 	
 	# Аномалии: -1, нормальные: 1
-	filtered_df['is_anomaly'] = filtered_df['is_anomaly'] == -1
+	filtered_df['is_anomaly'] = filtered_df['is_anomaly'] == 1
 	
 	# Распределение цены за единицу
+	output_folder = 'D:\Analysis-Results\efficient_analyses'
+	if not os.path.exists(output_folder):
+		os.makedirs(output_folder)
+	
 	plt.figure(figsize=(10, 6))
 	grouped = filtered_df.groupby('is_anomaly')
 	for is_anomaly, group in grouped:
 		if not group.empty:
-			sns.histplot(group['total_price_eur'], bins=30, kde=True, label=f"Anomaly={is_anomaly}")
-	output_file = os.path.join(OUTPUT_DIR, "price_distribution.png")
+			sns.histplot(group['total_price_in_eur'], bins=30, kde=True, label=f"Anomaly={is_anomaly}")
+	
 	plt.title('Distribution of Total Prices in EUR')
 	plt.xlabel('Total Price (EUR)')
 	plt.ylabel('Frequency')
 	plt.legend()
 	plt.grid(True)
 	plt.tight_layout()
+	output_file = os.path.join(output_folder, 'price_distribution.png')
 	plt.savefig(output_file)
 	plt.close()
-	
 	print(f"Гистограмма распределения сохранена в: {output_file}")
 	
 	# Статистика
 	stats = (
 		filtered_df.groupby('discipline')
 		.agg(
-			median_unit_price_eur=('unit_price_eur', 'median'),
-			mean_unit_price_eur=('unit_price_eur', 'mean'),
-			std_unit_price_eur=('unit_price_eur', 'std'),
-			median_total_price_eur=('total_price_eur', 'median'),
-			mean_total_price_eur=('total_price_eur', 'mean'),
-			std_total_price_eur=('total_price_eur', 'std'),
+			median_unit_price_in_eur=('unit_price_in_eur', 'median'),
+			mean_unit_price_in_eur=('unit_price_in_eur', 'mean'),
+			std_unit_price_in_eur=('unit_price_in_eur', 'std'),
+			median_total_price_in_eur=('total_price_in_eur', 'median'),
+			mean_total_price_in_eur=('total_price_in_eur', 'mean'),
+			std_total_price_in_eur=('total_price_in_eur', 'std'),
 			median_supplier_qty=('supplier_qty', 'median'),
 			mean_supplier_qty=('supplier_qty', 'mean'),
 			std_supplier_qty=('supplier_qty', 'std')
@@ -78,7 +87,7 @@ def analyze_efficiency(filtered_df, OUTPUT_DIR):
 
 
 # детальный анализ аномальных лотов
-def detailed_anomaly_analysis(analyzed_df, OUTPUT_DIR):
+def detailed_anomaly_analysis(analyzed_df, parent, OUTPUT_DIR):
 	"""
 	Метод для анализа аномальных лотов из analyzed_df.
 	"""
@@ -92,9 +101,10 @@ def detailed_anomaly_analysis(analyzed_df, OUTPUT_DIR):
 		return None
 	
 	# 2. Подготовка данных для анализа
-	anomalous_summary = anomalous_lots[['lot_number', 'unit_price_eur', 'total_price_eur', 'supplier_qty',
-	                                    'actor_name', 'winner_name']].sort_values(by='total_price_eur',
+	anomalous_summary = anomalous_lots[['lot_number', 'unit_price_in_eur', 'total_price_in_eur', 'supplier_qty',
+	                                    'actor_name', 'winner_name']].sort_values(by='total_price_in_eur',
 	                                                                              ascending=False)
+	
 	
 	# Группировка по исполнителям и поставщикам
 	actors_analysis = anomalous_lots.groupby('actor_name').size().sort_values(ascending=False).reset_index(
@@ -113,8 +123,6 @@ def detailed_anomaly_analysis(analyzed_df, OUTPUT_DIR):
 		y="winner_name",
 		orient="h",
 		palette="viridis",
-		hue="winner_name", # Указываем, что `winner_name` будет использоваться для раскраски
-		legend=False,      # Отключаем легенду, так как она будет избыточной
 		dodge=False
 	)
 	plt.title("Top 20 Anomalous Lots Count by Winner")
@@ -134,8 +142,6 @@ def detailed_anomaly_analysis(analyzed_df, OUTPUT_DIR):
 		y="actor_name",
 		orient="h",
 		palette="viridis",
-		hue="actor_name",  # Указываем, что `actor_name` будет использоваться для раскраски
-		legend=False,      # Отключаем избыточную легенду
 		dodge=False
 	)
 	plt.title("Top 20 Anomalous Lots Count by Actor")
@@ -158,13 +164,13 @@ def detailed_anomaly_analysis(analyzed_df, OUTPUT_DIR):
 	               "Аномалии по постащикам": winners_analysis,
 	               }
 	# создаем путь к файлу
-	output_file = os.path.join(output_folder, "Anomalous_Lots_Analysis.xlsx")
+	output_file = f"{output_folder}\Anomalous_Lots_Analysis.xlsx"
 	if not analyzed_df.empty:
 		# вызываем функцию для сохранения
 		from utils.save_dfs_to_Excel import save_multiple_dfs_to_excel
 		save_multiple_dfs_to_excel(dfs_to_save, output_file)
 	else:
-		QMessageBox.warning("Ошибка", f"Датафрейм {analyzed_df} пуст, сохранение в Excel не выполнено!")
+		QMessageBox.warning(parent, "Ошибка", f"Датафрейм {analyzed_df} пуст, сохранение в Excel не выполнено!")
 	print(f"Результаты анализа аномалий сохранены в файл: {output_file}")
 	return anomalous_summary, actors_analysis, winners_analysis
 
@@ -173,15 +179,15 @@ def detailed_results_analyses(analyzed_df, anomaly_stats, OUTPUT_DIR):
 	k = 3  # Коэффициент чувствительности (например, 3 стандартных отклонения)
 	
 	# Расширение  anomaly_stats нижними и верхними границами статистических показателей
-	anomaly_stats["lower_bound_unit_price"] = anomaly_stats["mean_unit_price_eur"] - k * anomaly_stats[
-		"std_unit_price_eur"]
-	anomaly_stats["upper_bound_unit_price"] = anomaly_stats["mean_unit_price_eur"] + k * anomaly_stats[
-		"std_unit_price_eur"]
+	anomaly_stats["lower_bound_unit_price"] = anomaly_stats["mean_unit_price_in_eur"] - k * anomaly_stats[
+		"std_unit_price_in_eur"]
+	anomaly_stats["upper_bound_unit_price"] = anomaly_stats["mean_unit_price_in_eur"] + k * anomaly_stats[
+		"std_unit_price_in_eur"]
 	
-	anomaly_stats["lower_bound_total_price"] = anomaly_stats["mean_total_price_eur"] - k * anomaly_stats[
-		"std_total_price_eur"]
-	anomaly_stats["upper_bound_total_price"] = anomaly_stats["mean_total_price_eur"] + k * anomaly_stats[
-		"std_total_price_eur"]
+	anomaly_stats["lower_bound_total_price"] = anomaly_stats["mean_total_price_in_eur"] - k * anomaly_stats[
+		"std_total_price_in_eur"]
+	anomaly_stats["upper_bound_total_price"] = anomaly_stats["mean_total_price_in_eur"] + k * anomaly_stats[
+		"std_total_price_in_eur"]
 	
 	# Шаг 2: Выявление аномалий в analyzed_df
 	# Слияние для добавления границ к исходным данным (по discipline)
@@ -194,10 +200,10 @@ def detailed_results_analyses(analyzed_df, anomaly_stats, OUTPUT_DIR):
 	
 	# Фильтрация аномалий
 	anomalies = analyzed_with_bounds[
-		(analyzed_with_bounds["unit_price_eur"] < analyzed_with_bounds["lower_bound_unit_price"]) |
-		(analyzed_with_bounds["unit_price_eur"] > analyzed_with_bounds["upper_bound_unit_price"]) |
-		(analyzed_with_bounds["total_price_eur"] < analyzed_with_bounds["lower_bound_total_price"]) |
-		(analyzed_with_bounds["total_price_eur"] > analyzed_with_bounds["upper_bound_total_price"])
+		(analyzed_with_bounds["unit_price_in_eur"] < analyzed_with_bounds["lower_bound_unit_price"]) |
+		(analyzed_with_bounds["unit_price_in_eur"] > analyzed_with_bounds["upper_bound_unit_price"]) |
+		(analyzed_with_bounds["total_price_in_eur"] < analyzed_with_bounds["lower_bound_total_price"]) |
+		(analyzed_with_bounds["total_price_in_eur"] > analyzed_with_bounds["upper_bound_total_price"])
 		]
 	
 	# Шаг 3: Визуализация
@@ -210,8 +216,8 @@ def detailed_results_analyses(analyzed_df, anomaly_stats, OUTPUT_DIR):
 	
 	# График всех точек с выделением аномалий
 	plt.figure(figsize=(10, 6))
-	plt.scatter(analyzed_df["unit_price_eur"], analyzed_df["total_price_eur"], alpha=0.6, label="Normal Data")
-	plt.scatter(anomalies["unit_price_eur"], anomalies["total_price_eur"], color="red", alpha=0.8,
+	plt.scatter(analyzed_df["unit_price_in_eur"], analyzed_df["total_price_in_eur"], alpha=0.6, label="Normal Data")
+	plt.scatter(anomalies["unit_price_in_eur"], anomalies["total_price_in_eur"], color="red", alpha=0.8,
 	            label="Anomalies")
 	plt.xlabel("Unit Price (EUR)")
 	plt.ylabel("Total Price (EUR)")
@@ -225,70 +231,29 @@ def detailed_results_analyses(analyzed_df, anomaly_stats, OUTPUT_DIR):
 	
 	print(f"График успешно сохранён в файл: {output_file_path}")
 	
-	anomalies_to_excel = anomalies[["lot_number", "discipline", "winner_name",
-	                                "unit_price_eur", "total_price_eur", "is_anomaly"]]
-	column_translation = {
-		"lot_number": "Номер_лота",
-		"discipline": "Дисциплина",
-		"winner_name": "Победитель лота",
-		"unit_price_eur": "Цена за единицу (EUR)",
-		"total_price_eur": "Общая цена (EUR)",
-		"is_anomaly": "Аномалия"
-	}
-	
-	df_renamed = anomalies_to_excel[["lot_number", "discipline", "winner_name", "unit_price_eur",
-	                                 "total_price_eur", "is_anomaly"]].rename(columns=column_translation)
-	
-	# шаг 4 Путь к файлу для сохранения в excel
-	output_excel_file = os.path.join(output_dir, "anomalies.xlsx")
+	# Шаг 4: Вывод аномальных точек Здесь нужно использовать save_dfs_to_Excel
+	# Убедимся, что директория существует
+	output_dir = r"D:\Analysis-Results\efficient_analyses"
 	os.makedirs(output_dir, exist_ok=True)
-	
-	
-	# Создаем словарь для сохранения
-	dfs_to_save = {"Аномальные Лоты": df_renamed}
-	
-	# вызываем функцию для сохранения
-	from utils.save_dfs_to_Excel import save_multiple_dfs_to_excel
-	save_multiple_dfs_to_excel(dfs_to_save, output_excel_file)
-	
-	print(f"Результаты анализа аномалий сохранены в файл: {output_excel_file}")
+	# Путь к файлу
+	output_file_path = os.path.join(output_dir, "anomalies.xlsx")
+		# Запись в Excel
+	anomalies[["lot_number", "discipline", "winner_name", "unit_price_in_eur", "total_price_in_eur"]].to_excel(
+		output_file_path, index=False)
+	print(f"Аномалии успешно сохранены в файл: {output_file_path}")
 	
 
+
 # вызов функций из главного метода
-def main_method(data_df, OUTPUT_DIR):
+def main_method(data_df, OUTPUT_DIR=None, parent_widget=None):
 	"""
 		Головной метод анализа эффективности и поиска аномалий
 	"""
 	
 	# добираем товары выбранной категории в датафрейм
-	data_df = data_df.drop_duplicates()
 	filtered_df = data_df.copy()
 	
-	# создадим датафрейм со всеми выбранными товарами
-	from models_analyses.regular_expressions_for_search import search_by_regular_expressions
-	regular_filtered_df = search_by_regular_expressions(filtered_df)
-	
-	# Объединим два датафрейма и очистим столбцы
-	df_merged = pd.merge(filtered_df, regular_filtered_df, on='lot_number')
-	df_merged = df_merged.rename(columns={'good_name_x': 'good_name'})
-	df_merged = df_merged.drop('good_name_y', axis=1)
-	df_merged = df_merged.drop_duplicates()
-	
-	# приведем цены за единицу и стоимости в единую валюту EUR
-	columns_info = [
-	    ("unit_price", "currency", "unit_price_eur"),
-	    ("total_price", "currency", "total_price_eur"),
-	]
-	converter = CurrencyConverter()
-	df_merged_eur = converter.convert_multiple_columns(df_merged, columns_info=columns_info)
-	
-	# Средняя цена каждого товара
-	avg_price_by_good = df_merged_eur.groupby('good_name')['unit_price_eur'].mean()
-	
-	# самый частый поставщик для каждого товара
-	most_frequent_supplier = df_merged_eur.groupby('good_name')['winner_name'].agg(lambda x: x.mode()[0])
-	
-	analyzed_df, stats = analyze_efficiency(df_merged_eur, OUTPUT_DIR)
+	analyzed_df, stats = analyze_efficiency(filtered_df)
 	
 	# Сохранение анализа эффективности исполнителей
 	# Создаем словарь с датафреймами для сохранения
@@ -305,12 +270,37 @@ def main_method(data_df, OUTPUT_DIR):
 		from utils.save_dfs_to_Excel import save_multiple_dfs_to_excel
 		save_multiple_dfs_to_excel(dfs_to_save, file_path)
 	else:
-		QMessageBox.warning("Ошибка", f"Датафрейм {analyzed_df} пуст, сохранение в Excel не выполнено!")
+		QMessageBox.warning(parent_widget, "Ошибка", f"Датафрейм {analyzed_df} пуст, сохранение в Excel не выполнено!")
 		return
 	
 	if not analyzed_df.empty:
+	# 	file_saved = False
+	# 	while not file_saved:
+	# 		try:
+	# 			# Сохраняем основной анализ
+	# 			analyzed_df.to_excel(file_path, index=False)
+	# 			print("Анализ эффективности исполнителей сохранен в файл 'Efficiency_Metrics.xlsx'")
+	#
+	# 			# Сохраняем статистику по аномалиям
+	# 			with pd.ExcelWriter(file_path, engine='openpyxl', mode='a') as writer:
+	# 				stats.to_excel(writer, sheet_name='Anomaly_Stats')
+	# 			print("Статистика по аномалиям добавлена в файл 'Efficiency_Metrics.xlsx' на лист 'Anomaly_Stats'.")
+	#
+	# 			file_saved = True
+	# 		except PermissionError:
+	# 			print("Файл используется другой программой.")
+	# 			msg_box = QMessageBox(parent_widget)
+	# 			msg_box.setIcon(QMessageBox.Warning)
+	# 			msg_box.setWindowTitle("Файл используется")
+	# 			msg_box.setText(
+	# 				"Файл 'Efficiency_Metrics.xlsx' уже используется другой программой.\nПожалуйста, закройте файл и нажмите OK для продолжения.")
+	# 			msg_box.setStandardButtons(QMessageBox.Ok)
+	# 			msg_box.exec_()
+	# 		else:
+	# 			print("Нет данных для анализа эффективности исполнителей для сохранения.")
+	#
 		# занимаемся анализом аномальных лотов
-		detailed_anomaly_analysis(analyzed_df, OUTPUT_DIR)
+		detailed_anomaly_analysis(analyzed_df, parent_widget, OUTPUT_DIR)
 	
 		# Визуализация Isolation Forest
 		visualize_isolation_forest(analyzed_df, OUTPUT_DIR)

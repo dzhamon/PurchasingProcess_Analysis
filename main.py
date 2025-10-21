@@ -606,9 +606,10 @@ class Window(QMainWindow):
             end_date = self._current_filtered_df["close_date"].max()
 
             self.show_progress(30)
-            from models_analyses.analysis import analyze_monthly_cost
 
+            from models_analyses.analysis import analyze_monthly_cost
             analyze_monthly_cost(self, self._current_filtered_df, start_date, end_date)
+
             self.show_progress(100)
             self.hide_progress()
         else:
@@ -683,7 +684,6 @@ class Window(QMainWindow):
             self.show_progress(10)
 
             print("Запуск сетевого анализа")
-            from models_analyses.analysis import network_analysis
             from models_analyses.analysis import network_analysis_improved
             from models_analyses.graph_analyze_common_suppliers import (
                 analyze_and_visualize_suppliers,
