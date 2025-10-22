@@ -121,7 +121,21 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 		(monthly_series_df['total_price_eur'] > upper_bound)
 		].sort_values(by='total_price_eur', ascending=False)
 
-	
+	if len(outliers_iqr) > 0:
+		# определяем месяцы для удаления выбросов (первые 2 из списка)
+		# top_outlier_months_str =outliers_iqr['year_month'].head(2).astype(str).tolist()
+		# определяем месяцы для удаления выбросов (все из списка outliers_iqr
+		top_outlier_months_str =outliers_iqr['year_month'].astype(str).tolist()
+
+		# 2. Преобразуем список строк в PeriodIndex
+		dynamic_outlier_months = pd.PeriodIndex(top_outlier_months_str, freq='M')
+
+		# 3. Создаем очищенную версию данных
+		cleaned_monthly_totals = monthly_totals.drop(dynamic_outlier_months, errors='ignore')
+	else:
+		# Если выбросов нет, работаем со всеми данными
+		cleaned_monthly_totals = monthly_totals.copy()
+
 	# Статистические метрики
 	monthly_stats = {
 	    "Среднемесячные затраты": monthly_totals.mean(),
@@ -138,8 +152,6 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 	).sort_values(by='cv', ascending=False)
 	cv_by_discipline.columns = ['Коэффициент вариации']
 
-
-
 	# Функция форматирования валют
 	def format_currency(x, p):
 		if x >= 1e6:
@@ -154,11 +166,20 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 	# 1. График: Общие затраты по месяцам (EUR) с трендом
 	# =======================================================
 	plt.figure(figsize=(10, 6)) # Создаем новую фигуру
-	monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты')
+
+	# Теперь используем dynamic_outlier_months для подписи графика
+	outliers_removed_list = [str(m) for m in dynamic_outlier_months] if 'dynamic_outlier_months' in locals() else []
+	title_suffix = f" (Без Outliers: {', '.join(outliers_removed_list)})" if outliers_removed_list else ""
+
+	# Рисуем бары очищенных данных
+	cleaned_monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты (Чистые)')
+
+
+	# monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты')
 
 	# --- НОВЫЙ КОД: Добавление 3-х месячного Скользящего среднего (Moving Average) ---
 	window_size = 3 # Окно в 3 месяца (можно попробовать 4 или 6)
-	ma_line = monthly_totals.rolling(window=window_size, center=False).mean()
+	ma_line = cleaned_monthly_totals.rolling(window=window_size, center=False).mean()
 	ma_line.plot(kind='line', color='darkgreen', linewidth=3, label=f'{window_size}-мес. Скользящее среднее', ax=plt.gca())
 	# -------------------------------------------------------------------------------
 
@@ -168,8 +189,8 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 	plt.xticks(rotation=45)
 
 	# Добавляем линию тренда (уже есть, но убедитесь, что она ниже ma_line)
-	x_numeric = range(len(monthly_totals))
-	slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, monthly_totals.values)
+	x_numeric = range(len(cleaned_monthly_totals))
+	slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, cleaned_monthly_totals.values)
 	trend_line = slope * np.array(x_numeric) + intercept
 	plt.plot(x_numeric, trend_line, "r--", alpha=0.7, label=f"Линейный Тренд (R²={r_value**2:.3f})")
 
@@ -283,6 +304,15 @@ def analyze_monthly_cost(parent_widget, df, start_date, end_date):
 
 		# 3. CV по дисциплинам
 		cv_by_discipline.to_excel(writer, sheet_name='CV по дисциплинам')
+
+		# Объединяем summary и cv_by_discipline
+		cost_control_summary = summary[['Доля, %']].merge(
+			cv_by_discipline,
+			left_index=True,
+			right_index=True
+		).sort_values(by='Доля, %', ascending=False)
+
+		cost_control_summary.to_excel(writer, sheet_name='Сводка_Контроль_Затрат')
 	
 	QMessageBox.information(
 		parent_widget,
