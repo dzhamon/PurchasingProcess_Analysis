@@ -13,6 +13,7 @@ from utils.PandasModel_previous import PandasModel
 from widgets.trend_analyze_prepare_widget import TrendAnalyzeWidget
 import pandas as pd
 from utils.functions import CurrencyConverter, save_analysis_results
+from utils.config import BASE_DIR
 from prophet import Prophet
 
 
@@ -225,6 +226,7 @@ def analyzeNonEquilSums(parent, data_df):
 
 def data_preprocessing_and_analysis(df):
 	import pandas as pd
+	import os
 	
 	try:
 		# Выбираем из загруженных Контрактов уникальные лоты и
@@ -279,9 +281,13 @@ def data_preprocessing_and_analysis(df):
 		)
 		# и создадим датафрейм с контрактами без лотов
 		cont_less_lots_df = df_merged[contracts_to_remove_mask].copy()
-		# по-хорошему, имея доступ к базе 1С можно было-ба организовать
+		# по-хорошему, имея прямой доступ к базе 1С можно было-ба организовать
 		# автоматическую сверку data_kp на предмет отсутствующих Лотов
-		
+
+		output_path = os.path.join(OUT_DIR, "Contracts_Without_Lots_Anomaly.xlsx")
+		cont_less_lots_df.to_excel(output_path, index=False)
+		print(f"Аномальные контракты сохранены в: {output_path}")
+
 		# удалим столбец project_name_y и переименуем project_name_x в project_name
 		df_merged.drop(columns=['project_name_y'], inplace=True)
 		df_merged.rename(columns={'project_name_x': 'project_name'}, inplace=True)
@@ -325,7 +331,7 @@ def data_preprocessing_and_analysis(df):
 		df_merged['total_contract_amount_eur'] = converted_df['total_contract_amount_eur'].copy()
 		df_merged['unit_price_eur'] = converted_df['unit_price_eur'].copy()
 		
-		return df_merged
+		return df_merged, cont_less_lots_df
 	
 	except Exception as e:
 		print(f"Ошибка при формировании ... : {e}")
@@ -375,8 +381,8 @@ def prepare_contract_data(filtered_df):
 		plt.figure(figsize=(10, 6))
 		plt.plot(distances)
 		plt.title(f"k-NN Graph for DBSCAN (k={k})")
-		plt.xlabel("Points sorted by distance to k-th nearest neighbor")
-		plt.ylabel("Distance")
+		plt.xlabel("Точки, отсортированные по расстоянию до k-го ближайшего соседа")
+		plt.ylabel("Расстояние")
 		plt.grid()
 		plt.show()
 		return
@@ -408,5 +414,290 @@ def prepare_contract_data(filtered_df):
 	
 	return clustered_data, clusters_summary
 
-# Запуск обработки
-# clustered_data, clusters_summary = main(contract_df)
+def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
+	from matplotlib.ticker import FuncFormatter
+	from scipy import stats
+	import numpy as np
+	import os
+	from datetime import datetime
+
+	"""
+	Расширенный анализ месячных затрат с разбивкой по дисциплинам
+	"""
+	# Создаем папку для результатов
+	OUT_DIR = os.path.join(BASE_DIR, "monthly_cost_analysis")
+	os.makedirs(OUT_DIR, exist_ok=True)
+
+	timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+	# # Проверка наличия необходимых колонок
+	# required_columns = ["close_date", "discipline", "total_price", "currency"]
+	# missing_columns = [col for col in required_columns if col not in df.columns]
+	# if missing_columns:
+	# 	QMessageBox.warning(
+	# 		parent_widget, "Ошибка", f"Отсутствуют колонки: {', '.join(missing_columns)}"
+	# 	)
+	# 	return
+
+	# Конвертация и фильтрация данных
+	df['contract_signing_date'] = pd.to_datetime(df['contract_signing_date'], errors='coerce')
+	filtered_df = df[(df['contract_signing_date'] >= start_date) & (df['contract_signing_date'] <= end_date)].copy()
+
+	if filtered_df.empty:
+		QMessageBox.warning(parent_widget, "Ошибка", "Нет данных для заданного диапазона дат.")
+		return
+
+	# Добавляем столбцы для анализа
+	filtered_df['year_month'] = filtered_df['contract_signing_date'].dt.to_period('M')
+	filtered_df['month_name'] = filtered_df['contract_signing_date'].dt.strftime('%Y-%m')
+
+	# Конвертация в EUR
+	try:
+		converter = CurrencyConverter()
+		columns_info = [('total_contract_amount', 'contract_currency', 'total_contract_amount_eur'),
+						('unit_price', 'contract_currency', 'unit_price_eur')]
+		filtered_df = converter.convert_multiple_columns(
+			df=filtered_df, columns_info=columns_info)
+	except Exception as e:
+		QMessageBox.warning(parent_widget, 'Ошибка конвертации', f"Ошибка при конвертации валют: {str(e)}")
+		return
+	# Константы
+	MIN_TRASHOLD_PERCENT = 2 #2% минимум для отображения
+
+	# 1. Анализ по дисциплинам в EUR
+	discipline_analysis = filtered_df.groupby(['year_month', 'discipline'])['total_price_eur'].sum().unstack(fill_value=0)
+	discipline_totals = filtered_df.groupby('discipline')['total_contract_amount_eur'].sum()
+	total_sum = discipline_totals.sum()
+
+	# показать отдельно только значимые дисциплины
+	significant_disciplines = discipline_totals[discipline_totals / total_sum * 100 >= MIN_TRASHOLD_PERCENT]
+	other_sum = discipline_totals.sum() - significant_disciplines.sum()
+
+	# Создаем Series для круговой диаграммы (топ-5 + "Другие")
+	pie_data = significant_disciplines.copy()
+	if other_sum > 0:
+		pie_data['Другие'] = other_sum
+
+	# 3. Общие затраты по месяцам в EUR
+	monthly_totals = filtered_df.groupby('year_month')['total_contract_amount_eur'].sum()
+
+	# Преобразуем  Series в DataFrame для Z-Score
+	monthly_series_df = monthly_totals.rename('total_contract_amount_eur').reset_index()
+
+	# Z-Score (Поиск месяцев, которые сильно отклоняются от CРЕДНЕГО)
+	monthly_series_df['Z_Score'] = stats.zscore(monthly_series_df['total_contract_amount_eur'])
+	outliers_zscore = monthly_series_df[abs(monthly_series_df['Z_Score']) >= 2] # Порог Z >= 2
+
+	# 2. IQR (Поиск месяцев, которые сильно отклоняются от МЕДИАНЫ)
+	Q1 = monthly_series_df['total_contract_amount_eur'].quantile(0.25)
+	Q3 = monthly_series_df['total_contract_amount_eur'].quantile(0.75)
+	IQR = Q3 - Q1
+	# Порог: 1.5 * IQR
+	lower_bound = Q1 - 1.5 * IQR
+	upper_bound = Q3 + 1.5 * IQR
+	outliers_iqr = monthly_series_df[
+		(monthly_series_df['total_contract_amount_eur'] < lower_bound) |
+		(monthly_series_df['total_contract_amount_eur'] > upper_bound)
+		].sort_values(by='total_contract_amount_eur', ascending=False)
+
+	if len(outliers_iqr) > 0:
+		# определяем месяцы для удаления выбросов (динамически)
+		# top_outlier_months_str =outliers_iqr['year_month'].head(2).astype(str).tolist()
+		# определяем месяцы для удаления выбросов (все из списка outliers_iqr
+		top_outlier_months_str =outliers_iqr['year_month'].astype(str).tolist()
+
+		# 2. Преобразуем список строк в PeriodIndex
+		dynamic_outlier_months = pd.PeriodIndex(top_outlier_months_str, freq='M')
+
+		# 3. Создаем очищенную версию данных
+		cleaned_monthly_totals = monthly_totals.drop(dynamic_outlier_months, errors='ignore')
+	else:
+		# Если выбросов нет, работаем со всеми данными
+		cleaned_monthly_totals = monthly_totals.copy()
+
+	# Статистические метрики
+	monthly_stats = {
+		"Среднемесячные затраты": monthly_totals.mean(),
+		"Медиана": monthly_totals.median(),
+		"Стандартное отклонение": monthly_totals.std(),
+		"Коэффициент вариации": monthly_totals.std() / monthly_totals.mean(),
+		"Минимум": monthly_totals.min(),
+		"Максимум": monthly_totals.max(),
+	}
+
+	# 1. Коэффициент вариации по дисциплинам
+	cv_by_discipline = filtered_df.groupby('discipline')['total_price_eur'].agg(
+		cv=lambda x: x.std() / x.mean() if x.mean() != 0 else 0
+	).sort_values(by='cv', ascending=False)
+	cv_by_discipline.columns = ['Коэффициент вариации']
+
+	# Функция форматирования валют
+	def format_currency(x, p):
+		if x >= 1e6:
+			return f'{x/1e6:.1f}M €'
+		elif x >= 1e3:
+			return f'{x/1e3:.0f}K €'
+		else:
+			return f'{x:.0f} €'
+
+	# Визуализация
+
+	# 1. График: Общие затраты по месяцам (EUR) с трендом
+	# =======================================================
+	plt.figure(figsize=(10, 6)) # Создаем новую фигуру
+
+	# Теперь используем dynamic_outlier_months для подписи графика
+	outliers_removed_list = [str(m) for m in dynamic_outlier_months] if 'dynamic_outlier_months' in locals() else []
+	title_suffix = f" (Без Outliers: {', '.join(outliers_removed_list)})" if outliers_removed_list else ""
+
+	# Рисуем бары очищенных данных
+	cleaned_monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты (Чистые)')
+
+
+	# monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты')
+
+	# --- НОВЫЙ КОД: Добавление 3-х месячного Скользящего среднего (Moving Average) ---
+	window_size = 3 # Окно в 3 месяца (можно попробовать 4 или 6)
+	ma_line = cleaned_monthly_totals.rolling(window=window_size, center=False).mean()
+	ma_line.plot(kind='line', color='darkgreen', linewidth=3, label=f'{window_size}-мес. Скользящее среднее', ax=plt.gca())
+	# -------------------------------------------------------------------------------
+
+	plt.gca().yaxis.set_major_formatter(FuncFormatter(format_currency))
+	plt.title('1. Общие месячные затраты (EUR), Тренд и Скользящее среднее')
+	plt.ylabel('Сумма, EUR')
+	plt.xticks(rotation=45)
+
+	# Добавляем линию тренда (уже есть, но убедимся, что она ниже ma_line)
+	x_numeric = range(len(cleaned_monthly_totals))
+	slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, cleaned_monthly_totals.values)
+	trend_line = slope * np.array(x_numeric) + intercept
+	plt.plot(x_numeric, trend_line, "r--", alpha=0.7, label=f"Линейный Тренд (R²={r_value**2:.3f})")
+
+	plt.legend(loc='upper left') # Поместите легенду в более удобное место
+	plt.grid(axis='y', linestyle='--') # Добавим сетку для читаемости
+	plt.tight_layout()
+	plt.savefig(os.path.join(OUT_DIR, f'1_monthly_totals_trend_{timestamp}.png'), dpi=300)
+	plt.close()
+
+
+	# =======================================================
+	# 2. График: Топ-5 дисциплин по затратам (Stacked Bar)
+	# =======================================================
+	plt.figure(figsize=(12, 7)) # Создаем новую фигуру
+	# Используем только значимые дисциплины
+	discipline_analysis[significant_disciplines.index].plot(kind='bar', stacked=True, ax=plt.gca())
+	plt.gca().yaxis.set_major_formatter(FuncFormatter(format_currency))
+	plt.title('2. Топ-дисциплины по месячным затратам (EUR)')
+	plt.ylabel('Сумма, EUR')
+	plt.xticks(rotation=45)
+	plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+	plt.tight_layout()
+	plt.savefig(os.path.join(OUT_DIR, f'2_discipline_stacked_bar_{timestamp}.png'), dpi=300)
+	plt.close()
+
+
+	# =======================================================
+	# 3. График: Доля дисциплин (круговая диаграмма)
+	# =======================================================
+	plt.figure(figsize=(9, 9)) # Круговая диаграмма лучше смотрится в квадрате
+	colors = plt.cm.tab20.colors
+	pie_data.plot(
+		kind='pie',
+		autopct=lambda p: f'{p:.1f}%\n({p * pie_data.sum() / 100:,.0f} EUR)',
+		colors=colors[:len(pie_data)],
+		startangle=90,
+		counterclock=False,
+		ax=plt.gca()
+	)
+	plt.title('3. Распределение общих затрат (Топ-дисциплины + Другие)')
+	plt.ylabel('')
+	plt.tight_layout()
+	plt.savefig(os.path.join(OUT_DIR, f'3_discipline_pie_{timestamp}.png'), dpi=300)
+	plt.close()
+
+
+	# =======================================================
+	# 4. График: Нормализованная динамика по дисциплинам
+	# =======================================================
+	plt.figure(figsize=(12, 7)) # Создаем новую фигуру
+	normalized = discipline_analysis.apply(lambda x: (x / x.max()) * 100)
+	for discipline in significant_disciplines.index:
+		plt.plot(normalized.index.astype(str), normalized[discipline], marker='o', label=discipline)
+	plt.title('4. Нормализованная динамика по дисциплинам (100% = макс. для дисциплины)')
+	plt.ylabel('Процент от максимального значения')
+	plt.xticks(rotation=45)
+	plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+	plt.grid(True)
+	plt.tight_layout()
+	plt.savefig(os.path.join(OUT_DIR, f'4_discipline_normalized_{timestamp}.png'), dpi=300)
+	plt.close()
+
+
+	# =======================================================
+	# 5. График: Box Plot для анализа выбросов (Новый график)
+	# =======================================================
+	plt.figure(figsize=(8, 5)) # Создаем новую фигуру
+	plt.boxplot(monthly_totals.values, vert=False)
+	plt.title('5. Box Plot месячных затрат (Визуализация выбросов)')
+	plt.yticks([1], ['Всего (EUR)'])
+	plt.gca().xaxis.set_major_formatter(FuncFormatter(format_currency))
+	plt.tight_layout()
+	plt.savefig(os.path.join(OUT_DIR, f'5_monthly_boxplot_{timestamp}.png'), dpi=300)
+	plt.close()
+
+
+	# Экспорт данных в Excel
+	with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx')) as writer:
+
+		# Экспортируем результаты анализа выбросов
+		outliers_zscore.to_excel(writer, sheet_name='Выбросы (Z-Score)', index=False)
+		outliers_iqr.to_excel(writer, sheet_name='Выбросы (IQR)', index=False)
+		# --------------------------------------------------------
+
+		# Сводная таблица по дисциплинам
+		pivot_eur = filtered_df.pivot_table(
+			index='year_month',
+			columns='discipline',
+			values='total_price_eur',
+			aggfunc='sum',
+			fill_value=0
+		)
+		pivot_eur.to_excel(writer, sheet_name='По дисциплинам (EUR)')
+
+		# Итоговая статистика
+		summary = filtered_df.groupby('discipline').agg({
+			'total_price_eur': ['sum', 'mean', 'count'],
+			'total_price': 'sum'
+		})
+		summary.columns = ['Сумма (EUR)', 'Среднее (EUR)', 'Кол-во закупок', 'Сумма (ориг валюта)']
+		summary['Доля, %'] = (summary['Сумма (EUR)'] / summary['Сумма (EUR)'].sum()) * 100
+		summary.to_excel(writer, sheet_name='Итоги')
+
+		# 2. Общая статистика (по месяцам)
+		monthly_stats_df = pd.DataFrame.from_dict(monthly_stats, orient='index', columns=['Значение (EUR)'])
+		# Добавим Коэффициент вариации из monthly_stats и переформатируем
+		if 'Коэффициент вариации' in monthly_stats_df.index:
+			monthly_stats_df.loc['Коэффициент вариации', 'Значение (EUR)'] *= 100
+
+		monthly_stats_df.to_excel(writer, sheet_name='Общая статистика')
+
+		# 3. CV по дисциплинам
+		cv_by_discipline.to_excel(writer, sheet_name='CV по дисциплинам')
+
+		# Объединяем summary и cv_by_discipline
+		cost_control_summary = summary[['Доля, %']].merge(
+			cv_by_discipline,
+			left_index=True,
+			right_index=True
+		).sort_values(by='Доля, %', ascending=False)
+
+		cost_control_summary.to_excel(writer, sheet_name='Сводка_Контроль_Затрат')
+
+	QMessageBox.information(
+		parent_widget,
+		"Анализ завершен",
+		f"Анализ месячных затрат в EUR сохранен в:\n{OUT_DIR}"
+	)
+
+
+

@@ -275,7 +275,7 @@ class Window(QMainWindow):
 
         # Меню Анализ по Лотам
         analysisMenu = menuBar.addMenu("Анализ данных по Лотам")
-        analysisMenu.addAction(self.analyzeMonthlyExpensesAction)
+        # analysisMenu.addAction(self.analyzeMonthlyExpensesAction)
         analysisMenu.addAction(self.analyzeTopSuppliersAction)
         analysisMenu.addAction(self.suppliersfriquencyAction)
         analysisMenu.addAction(self.networkanalyseAction)
@@ -283,11 +283,12 @@ class Window(QMainWindow):
         analysisMenu.addAction(self.efficiency_analyses_action)
         analysisMenu.addAction(self.suppliers_by_unit_price_action)
         analysisMenu.addAction(self.find_cross_discipline_lotsAction)
-        analysisMenu.addAction(self.lotcount_peryearAction)
+        # analysisMenu.addAction(self.lotcount_peryearAction)
 
         # Меню Анализ по Контрактам
         analysisMenuContract = menuBar.addMenu("Анализ данных по Контрактам")
         analysisMenuContract.addAction(self.analyzeClasterAction)
+        analysisMenu.addAction(self.analyzeMonthlyExpensesAction)
         analysisMenuContract.addAction(self.trend_analyses_action)
         analysisMenuContract.addAction(self.prophet_arima_action)
         analysisMenuContract.addAction(self.contracts_less_dates_action)
@@ -319,12 +320,12 @@ class Window(QMainWindow):
         self.statusBar().showMessage("Все ОК")
 
         # Действия для меню Анализ данных по Лотам
-        self.analyzeMonthlyExpensesAction = QAction("Анализ месячных затрат", self)
-        self.setActionTooltip(
-            self.analyzeMonthlyExpensesAction,
-            "Анализ данных по Лотам",
-            "Анализ месячных затрат",
-        )
+        # self.analyzeMonthlyExpensesAction = QAction("Анализ месячных затрат", self)
+        # self.setActionTooltip(
+        #     self.analyzeMonthlyExpensesAction,
+        #     "Анализ данных по Лотам",
+        #     "Анализ месячных затрат",
+        # )
 
         self.analyzeTopSuppliersAction = QAction("Анализ top-10 поставщиков", self)
         self.setActionTooltip(
@@ -379,21 +380,24 @@ class Window(QMainWindow):
             "Анализ лотов общих для разных дисциплин",
         )
 
-        self.lotcount_peryearAction = QAction(
-            "Количество лотов по дисциплинам по-квартально", self
-        )
-        self.setActionTooltip(
-            self.lotcount_peryearAction,
-            "Анализ данных по Лотам",
-            "menu_item_",
-        )
+        # self.lotcount_peryearAction = QAction(
+        #     "Количество лотов по дисциплинам по-квартально", self
+        # )
+        # self.setActionTooltip(
+        #     self.lotcount_peryearAction,
+        #     "Анализ данных по Лотам",
+        #     "menu_item_",
+        # )
 
         # Действия для меню Анализ данных по Контрактам
         self.analyzeClasterAction = QAction("Кластерный анализ", self)
-        self.setActionTooltip(
-            self.analyzeClasterAction,
-            "Анализ данных по Контрактам",
+        self.setActionTooltip(self.analyzeClasterAction,"Анализ данных по Контрактам",
             "Классификация поставщиков",
+        )
+
+        self.analyzeMonthlyExpensesAction = QAction("Анализ месячных затрат", self)
+        self.setActionTooltip(self.analyzeMonthlyExpensesAction,"Анализ данных по Контрактам",
+            "Анализ месячных затрат",
         )
 
         self.trend_analyses_action = QAction("Тренд - анализ", self)
@@ -451,9 +455,9 @@ class Window(QMainWindow):
         self.ExitAction.triggered.connect(self.close)
 
         # Подключение сигналов к методам Анализа данных по Лотам
-        self.analyzeMonthlyExpensesAction.triggered.connect(
-            self.run_analyze_monthly_cost
-        )  # анализ месячных затрат
+        # self.analyzeMonthlyExpensesAction.triggered.connect(
+        #     self.run_analyze_monthly_cost
+        # )  # анализ месячных затрат
         self.analyzeTopSuppliersAction.triggered.connect(
             self.run_analyze_top_suppliers
         )  # анализ top-поставщиков
@@ -473,6 +477,7 @@ class Window(QMainWindow):
 
         # Подключение сигналов к методам Анализа данных по Контрактам
         self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
+        self.analyzeMonthlyExpensesAction.triggered.connect(self.run_analyze_monthly_cost)
         self.trend_analyses_action.triggered.connect(self.run_trend_analyses)
         self.prophet_arima_action.triggered.connect(self.run_prophet_and_arima)
         self.contracts_less_dates_action.triggered.connect(
@@ -602,13 +607,13 @@ class Window(QMainWindow):
 
             print("Данные для анализа (месячные затраты):")
             # Используем минимальную и максимальную даты из отфильтрованных данных
-            start_date = self._current_filtered_df["close_date"].min()
-            end_date = self._current_filtered_df["close_date"].max()
+            start_date = self._current_filtered_df["contract_signing_date"].min()
+            end_date = self._current_filtered_df["contract_signing_date"].max()
 
             self.show_progress(30)
 
-            from models_analyses.analysis import analyze_monthly_cost
-            analyze_monthly_cost(self, self._current_filtered_df, start_date, end_date)
+            from models_analyses.analyze_contracts import analyze_monthly_cost_cont
+            analyze_monthly_cost_cont(self, self._current_filtered_df, start_date, end_date)
 
             self.show_progress(100)
             self.hide_progress()
@@ -725,22 +730,20 @@ class Window(QMainWindow):
             self.progress_bar.show()
             self.show_progress(10)
 
-            from models_analyses.analyze_contracts import (
-                data_preprocessing_and_analysis,
-            )
+            from models_analyses.analyze_contracts import data_preprocessing_and_analysis
 
             # Удалим в датафрейме self._current_filtered_df строки-дубликаты если они есть
             self._current_filtered_df = self._current_filtered_df.drop_duplicates()
             self.show_progress(30)
 
-            df_merged = data_preprocessing_and_analysis(self._current_filtered_df)
+            df_merged, cont_less_lots_df = data_preprocessing_and_analysis(self._current_filtered_df)
             self.show_progress(70)
 
-            dialog = SelectionDialog(df_merged=df_merged, parent=self)
+            # dialog = SelectionDialog(df_merged=df_merged, parent=self)
             self.show_progress(100)
             self.hide_progress()
 
-            dialog.exec_()
+            # dialog.exec_()
 
     # построение множественной регресии и корреляционный анализ
     def run_prophet_and_arima(self):
@@ -752,9 +755,7 @@ class Window(QMainWindow):
             self.progress_bar.show()
             self.show_progress(10)
 
-            from models_analyses.regression_analyses import (
-                regression_analysis_month_by_month,
-            )
+            from models_analyses.regression_analyses import regression_analysis_month_by_month
 
             # в метод регрессионного анализа отправляем отфильтрованный _current_filtered_df
             regression_analysis_month_by_month(self._current_filtered_df)
