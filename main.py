@@ -288,7 +288,7 @@ class Window(QMainWindow):
         # Меню Анализ по Контрактам
         analysisMenuContract = menuBar.addMenu("Анализ данных по Контрактам")
         analysisMenuContract.addAction(self.analyzeClasterAction)
-        analysisMenu.addAction(self.analyzeMonthlyExpensesAction)
+        analysisMenuContract.addAction(self.analyzeMonthlyExpensesAction)
         analysisMenuContract.addAction(self.trend_analyses_action)
         analysisMenuContract.addAction(self.prophet_arima_action)
         analysisMenuContract.addAction(self.contracts_less_dates_action)

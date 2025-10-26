@@ -1,12 +1,10 @@
 import os
 import sys
 import numpy as np
-import plotly.graph_objs as go
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
-from plotly.subplots import make_subplots
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QPushButton, QTableView, QAbstractItemView, QHBoxLayout,
                              QSizePolicy, QMessageBox, QApplication)
 from utils.PandasModel_previous import PandasModel
@@ -14,7 +12,7 @@ from widgets.trend_analyze_prepare_widget import TrendAnalyzeWidget
 import pandas as pd
 from utils.functions import CurrencyConverter, save_analysis_results
 from utils.config import BASE_DIR
-from prophet import Prophet
+# from prophet import Prophet
 
 
 def show_filtered_df(filtered_df):
@@ -465,7 +463,7 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 	MIN_TRASHOLD_PERCENT = 2 #2% минимум для отображения
 
 	# 1. Анализ по дисциплинам в EUR
-	discipline_analysis = filtered_df.groupby(['year_month', 'discipline'])['total_price_eur'].sum().unstack(fill_value=0)
+	discipline_analysis = filtered_df.groupby(['year_month', 'discipline'])['total_contract_amount_eur'].sum().unstack(fill_value=0)
 	discipline_totals = filtered_df.groupby('discipline')['total_contract_amount_eur'].sum()
 	total_sum = discipline_totals.sum()
 
@@ -515,6 +513,10 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 		# Если выбросов нет, работаем со всеми данными
 		cleaned_monthly_totals = monthly_totals.copy()
 
+	# Переведем cleaned_monthly_totals в датафрейм, а потом в CSV файл
+	df_clean = cleaned_monthly_totals.rename('y').reset_index()
+	df_clean.columns = ['ds', 'y']
+
 	# Статистические метрики
 	monthly_stats = {
 		"Среднемесячные затраты": monthly_totals.mean(),
@@ -526,7 +528,7 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 	}
 
 	# 1. Коэффициент вариации по дисциплинам
-	cv_by_discipline = filtered_df.groupby('discipline')['total_price_eur'].agg(
+	cv_by_discipline = filtered_df.groupby('discipline')['total_contract_amount_eur'].agg(
 		cv=lambda x: x.std() / x.mean() if x.mean() != 0 else 0
 	).sort_values(by='cv', ascending=False)
 	cv_by_discipline.columns = ['Коэффициент вариации']
@@ -553,10 +555,7 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 	# Рисуем бары очищенных данных
 	cleaned_monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты (Чистые)')
 
-
-	# monthly_totals.plot(kind='bar', color='skyblue', ax=plt.gca(), label='Месячные затраты')
-
-	# --- НОВЫЙ КОД: Добавление 3-х месячного Скользящего среднего (Moving Average) ---
+	# Добавление 3-х месячного Скользящего среднего (Moving Average) ---
 	window_size = 3 # Окно в 3 месяца (можно попробовать 4 или 6)
 	ma_line = cleaned_monthly_totals.rolling(window=window_size, center=False).mean()
 	ma_line.plot(kind='line', color='darkgreen', linewidth=3, label=f'{window_size}-мес. Скользящее среднее', ax=plt.gca())
@@ -658,7 +657,7 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 		pivot_eur = filtered_df.pivot_table(
 			index='year_month',
 			columns='discipline',
-			values='total_price_eur',
+			values='total_contract_amount_eur',
 			aggfunc='sum',
 			fill_value=0
 		)
@@ -666,8 +665,8 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 
 		# Итоговая статистика
 		summary = filtered_df.groupby('discipline').agg({
-			'total_price_eur': ['sum', 'mean', 'count'],
-			'total_price': 'sum'
+			'total_contract_amount_eur': ['sum', 'mean', 'count'],
+			'total_contract_amount': 'sum'
 		})
 		summary.columns = ['Сумма (EUR)', 'Среднее (EUR)', 'Кол-во закупок', 'Сумма (ориг валюта)']
 		summary['Доля, %'] = (summary['Сумма (EUR)'] / summary['Сумма (EUR)'].sum()) * 100
