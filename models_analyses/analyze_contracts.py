@@ -412,6 +412,9 @@ def prepare_contract_data(filtered_df):
 	
 	return clustered_data, clusters_summary
 
+def run_sarima_forecast():
+	pass
+
 def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 	from matplotlib.ticker import FuncFormatter
 	from scipy import stats
@@ -427,15 +430,6 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 	os.makedirs(OUT_DIR, exist_ok=True)
 
 	timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-	# # Проверка наличия необходимых колонок
-	# required_columns = ["close_date", "discipline", "total_price", "currency"]
-	# missing_columns = [col for col in required_columns if col not in df.columns]
-	# if missing_columns:
-	# 	QMessageBox.warning(
-	# 		parent_widget, "Ошибка", f"Отсутствуют колонки: {', '.join(missing_columns)}"
-	# 	)
-	# 	return
 
 	# Конвертация и фильтрация данных
 	df['contract_signing_date'] = pd.to_datetime(df['contract_signing_date'], errors='coerce')
@@ -646,7 +640,7 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 
 
 	# Экспорт данных в Excel
-	with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx')) as writer:
+	with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx'), engine='openpyxl') as writer:
 
 		# Экспортируем результаты анализа выбросов
 		outliers_zscore.to_excel(writer, sheet_name='Выбросы (Z-Score)', index=False)
@@ -691,6 +685,76 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 		).sort_values(by='Доля, %', ascending=False)
 
 		cost_control_summary.to_excel(writer, sheet_name='Сводка_Контроль_Затрат')
+
+		from models_analyses.sarima_forecast import run_sarima_forecast
+
+		# =======================================================
+		# 6. Прогнозирование (SARIMA) для самой стабильной/значимой дисциплины
+		# =======================================================
+
+		# Константа: порог CV для выбора дисциплины (Чем ниже, тем стабильнее)
+		SIGNIFICANT_CV_THRESHOLD = 20.0
+
+		# 1. Определение целевой дисциплины для прогноза
+		# Критерий: Высокая доля (> MIN_TRASHOLD_PERCENT) И низкая волатильность (CV < 20.0).
+		# Берем ту, что с наибольшей Долей, % среди кандидатов.
+		forecasting_candidates = cost_control_summary[
+			(cost_control_summary['Доля, %'] >= MIN_TRASHOLD_PERCENT) &
+			(cost_control_summary['Коэффициент вариации'] < SIGNIFICANT_CV_THRESHOLD)
+			].sort_values(by='Доля, %', ascending=False)
+
+		if not forecasting_candidates.empty:
+			TARGET_CATEGORY = forecasting_candidates.index[0]
+
+			# 2. Уведомление и запуск прогноза
+			QMessageBox.information(
+				parent_widget,
+				"Прогноз SARIMA",
+				f"Выбрана дисциплина для прогноза: {TARGET_CATEGORY} (Доля: {forecasting_candidates['Доля, %'].iloc[0]:.1f}%, CV: {forecasting_candidates['Коэффициент вариации'].iloc[0]:.1f}).\n"
+				"Запуск модели SARIMA..."
+			)
+
+			try:
+				# 3. Вызов функции прогнозирования
+				# Используем pivot_eur (созданный в п. "Сводная таблица по дисциплинам")
+				forecast_result, plot_path = run_sarima_forecast(
+					df_pivot_eur=pivot_eur,
+					category=TARGET_CATEGORY,
+					OUT_DIR=OUT_DIR,
+					timestamp=timestamp,
+					forecast_months=12
+				)
+
+				if not forecast_result.empty:
+					# 4. Экспорт прогноза в Excel (Добавление нового листа в существующий файл)
+					# Внимание: для добавления листа нужен отдельный блок записи, т.к. файл уже закрыт.
+					try:
+						with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx'), mode='a',
+											engine='openpyxl', if_sheet_exists='replace') as writer:
+							forecast_df_export = forecast_result.reset_index().rename(columns={'index': 'Дата'})
+							forecast_df_export.to_excel(writer, sheet_name=f'Прогноз {TARGET_CATEGORY}', index=False)
+
+						QMessageBox.information(
+							parent_widget,
+							"Прогноз завершен",
+							f"Прогноз SARIMA для {TARGET_CATEGORY} (12 мес.) завершен.\n"
+							f"Результаты добавлены в Excel-файл и сохранены как:\n{plot_path}"
+						)
+					except Exception as e:
+						QMessageBox.warning(parent_widget, "Ошибка Экспорта Прогноза",
+											f"Не удалось добавить лист прогноза в Excel: {str(e)}")
+
+			except Exception as e:
+				QMessageBox.warning(parent_widget, "Ошибка Прогноза",
+									f"Не удалось выполнить прогноз SARIMA для {TARGET_CATEGORY}: {str(e)}")
+
+		else:
+			QMessageBox.warning(
+				parent_widget,
+				"Прогноз SARIMA",
+				f"Не найдена дисциплина с долей >= {MIN_TRASHOLD_PERCENT}% и CV < {SIGNIFICANT_CV_THRESHOLD} для надежного прогноза."
+			)
+
 
 	QMessageBox.information(
 		parent_widget,
