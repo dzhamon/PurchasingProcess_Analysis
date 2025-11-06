@@ -39,6 +39,12 @@ from widgets.module_tab3 import Tab3Widget
 from widgets.module_tab4 import Tab4Widget
 from widgets.module_tab5 import Tab5Widget
 from widgets.module_tab6 import Tab6Widget
+import pandas as pd
+import numpy as np
+
+# Установка глобальных параметров отображения Pandas
+# Настройка формата: Пробел как разделитель тысяч, запятая как разделитель дроби.
+pd.set_option('display.float_format', lambda x: '{:,.2f}'.format(x).replace(',', ' ').replace('.', ','))
 
 # Загрузка подсказок из JSON-файла
 def load_menu_hints():
@@ -739,11 +745,11 @@ class Window(QMainWindow):
             df_merged, cont_less_lots_df = data_preprocessing_and_analysis(self._current_filtered_df)
             self.show_progress(70)
 
-            # dialog = SelectionDialog(df_merged=df_merged, parent=self)
+            dialog = SelectionDialog(df_merged=df_merged, parent=self)
             self.show_progress(100)
             self.hide_progress()
 
-            # dialog.exec_()
+            dialog.exec_()
 
     # построение множественной регресии и корреляционный анализ
     def run_prophet_and_arima(self):

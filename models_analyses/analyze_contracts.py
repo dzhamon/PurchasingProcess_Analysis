@@ -412,15 +412,13 @@ def prepare_contract_data(filtered_df):
 	
 	return clustered_data, clusters_summary
 
-def run_sarima_forecast():
-	pass
-
 def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 	from matplotlib.ticker import FuncFormatter
 	from scipy import stats
 	import numpy as np
 	import os
 	from datetime import datetime
+	from models_analyses.sarima_forecast import run_sarima_forecast
 
 	"""
 	Расширенный анализ месячных затрат с разбивкой по дисциплинам
@@ -640,79 +638,91 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 
 
 	# Экспорт данных в Excel
-	with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx'), engine='openpyxl') as writer:
+	try:
+		with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx'), engine='openpyxl') as writer:
 
-		# Экспортируем результаты анализа выбросов
-		outliers_zscore.to_excel(writer, sheet_name='Выбросы (Z-Score)', index=False)
-		outliers_iqr.to_excel(writer, sheet_name='Выбросы (IQR)', index=False)
-		# --------------------------------------------------------
+			# Экспортируем результаты анализа выбросов
+			outliers_zscore.to_excel(writer, sheet_name='Выбросы (Z-Score)', index=False)
+			outliers_iqr.to_excel(writer, sheet_name='Выбросы (IQR)', index=False)
+			# --------------------------------------------------------
 
-		# Сводная таблица по дисциплинам
-		pivot_eur = filtered_df.pivot_table(
-			index='year_month',
-			columns='discipline',
-			values='total_contract_amount_eur',
-			aggfunc='sum',
-			fill_value=0
-		)
-		pivot_eur.to_excel(writer, sheet_name='По дисциплинам (EUR)')
-
-		# Итоговая статистика
-		summary = filtered_df.groupby('discipline').agg({
-			'total_contract_amount_eur': ['sum', 'mean', 'count'],
-			'total_contract_amount': 'sum'
-		})
-		summary.columns = ['Сумма (EUR)', 'Среднее (EUR)', 'Кол-во закупок', 'Сумма (ориг валюта)']
-		summary['Доля, %'] = (summary['Сумма (EUR)'] / summary['Сумма (EUR)'].sum()) * 100
-		summary.to_excel(writer, sheet_name='Итоги')
-
-		# 2. Общая статистика (по месяцам)
-		monthly_stats_df = pd.DataFrame.from_dict(monthly_stats, orient='index', columns=['Значение (EUR)'])
-		# Добавим Коэффициент вариации из monthly_stats и переформатируем
-		if 'Коэффициент вариации' in monthly_stats_df.index:
-			monthly_stats_df.loc['Коэффициент вариации', 'Значение (EUR)'] *= 100
-
-		monthly_stats_df.to_excel(writer, sheet_name='Общая статистика')
-
-		# 3. CV по дисциплинам
-		cv_by_discipline.to_excel(writer, sheet_name='CV по дисциплинам')
-
-		# Объединяем summary и cv_by_discipline
-		cost_control_summary = summary[['Доля, %']].merge(
-			cv_by_discipline,
-			left_index=True,
-			right_index=True
-		).sort_values(by='Доля, %', ascending=False)
-
-		cost_control_summary.to_excel(writer, sheet_name='Сводка_Контроль_Затрат')
-
-		from models_analyses.sarima_forecast import run_sarima_forecast
-
-		# =======================================================
-		# 6. Прогнозирование (SARIMA) для самой стабильной/значимой дисциплины
-		# =======================================================
-
-		# Константа: порог CV для выбора дисциплины (Чем ниже, тем стабильнее)
-		SIGNIFICANT_CV_THRESHOLD = 20.0
-
-		# 1. Определение целевой дисциплины для прогноза
-		# Критерий: Высокая доля (> MIN_TRASHOLD_PERCENT) И низкая волатильность (CV < 20.0).
-		# Берем ту, что с наибольшей Долей, % среди кандидатов.
-		forecasting_candidates = cost_control_summary[
-			(cost_control_summary['Доля, %'] >= MIN_TRASHOLD_PERCENT) &
-			(cost_control_summary['Коэффициент вариации'] < SIGNIFICANT_CV_THRESHOLD)
-			].sort_values(by='Доля, %', ascending=False)
-
-		if not forecasting_candidates.empty:
-			TARGET_CATEGORY = forecasting_candidates.index[0]
-
-			# 2. Уведомление и запуск прогноза
-			QMessageBox.information(
-				parent_widget,
-				"Прогноз SARIMA",
-				f"Выбрана дисциплина для прогноза: {TARGET_CATEGORY} (Доля: {forecasting_candidates['Доля, %'].iloc[0]:.1f}%, CV: {forecasting_candidates['Коэффициент вариации'].iloc[0]:.1f}).\n"
-				"Запуск модели SARIMA..."
+			# Сводная таблица по дисциплинам
+			pivot_eur = filtered_df.pivot_table(
+				index='year_month',
+				columns='discipline',
+				values='total_contract_amount_eur',
+				aggfunc='sum',
+				fill_value=0
 			)
+			pivot_eur.to_excel(writer, sheet_name='По дисциплинам (EUR)')
+
+			# Итоговая статистика
+			summary = filtered_df.groupby('discipline').agg({
+				'total_contract_amount_eur': ['sum', 'mean', 'count'],
+				'total_contract_amount': 'sum'
+			})
+			summary.columns = ['Сумма (EUR)', 'Среднее (EUR)', 'Кол-во закупок', 'Сумма (ориг валюта)']
+			summary['Доля, %'] = (summary['Сумма (EUR)'] / summary['Сумма (EUR)'].sum()) * 100
+			summary.to_excel(writer, sheet_name='Итоги')
+
+			# 2. Общая статистика (по месяцам)
+			monthly_stats_df = pd.DataFrame.from_dict(monthly_stats, orient='index', columns=['Значение (EUR)'])
+			# Добавим Коэффициент вариации из monthly_stats и переформатируем
+			if 'Коэффициент вариации' in monthly_stats_df.index:
+				monthly_stats_df.loc['Коэффициент вариации', 'Значение (EUR)'] *= 100
+
+			monthly_stats_df.to_excel(writer, sheet_name='Общая статистика')
+
+			# 3. CV по дисциплинам
+			cv_by_discipline.to_excel(writer, sheet_name='CV по дисциплинам')
+
+			# Объединяем summary и cv_by_discipline
+			cost_control_summary = summary[['Доля, %']].merge(
+				cv_by_discipline,
+				left_index=True,
+				right_index=True
+			).sort_values(by='Доля, %', ascending=False)
+
+			cost_control_summary.to_excel(writer, sheet_name='Сводка_Контроль_Затрат')
+
+	except ImportError:
+		QMessageBox.warning(parent_widget, "Ошибка Библиотеки", "Библиотека 'openpyxl' не установлена. Установите ее: pip install openpyxl")
+
+
+	# =======================================================
+	# 6. Прогнозирование (SARIMA) для самой стабильной/значимой дисциплины
+	# =======================================================
+
+	# Константа: порог CV для выбора дисциплины (Чем ниже, тем стабильнее)
+	SIGNIFICANT_CV_THRESHOLD = 20.0
+
+	# 1. Определение целевой дисциплины для прогноза
+	# Критерий: Высокая доля (> MIN_TRASHOLD_PERCENT) И низкая волатильность (CV < 20.0).
+	# Берем ту, что с наибольшей Долей, % среди кандидатов.
+	forecasting_candidates = cost_control_summary[
+		(cost_control_summary['Доля, %'] >= MIN_TRASHOLD_PERCENT) &
+		(cost_control_summary['Коэффициент вариации'] < SIGNIFICANT_CV_THRESHOLD)
+		].sort_values(by='Доля, %', ascending=False)
+
+	if not forecasting_candidates.empty:
+
+		forecast_categories = []
+
+		# 2. Уведомление и запуск прогноза
+		QMessageBox.information(
+			parent_widget,
+			"Прогноз SARIMA",
+			f"Найдено {len(forecasting_candidates)} дисциплин для надежного прогноза (CV < {SIGNIFICANT_CV_THRESHOLD}).\n"
+       		"Запуск модели SARIMA для каждой из них..."
+		)
+
+		# преобразовываем PeriodIndex в DatetimeIndex
+		pivot_eur.index = pivot_eur.index.to_timestamp(how='start')
+
+		# 2. Цикл по всем отобранным дисциплинам
+		for TARGET_CATEGORY in forecasting_candidates.index:
+			# Получение статистики для текущей дисциплины
+			current_candidate_stats = forecasting_candidates.loc[TARGET_CATEGORY]
 
 			try:
 				# 3. Вызов функции прогнозирования
@@ -727,12 +737,14 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 
 				if not forecast_result.empty:
 					# 4. Экспорт прогноза в Excel (Добавление нового листа в существующий файл)
-					# Внимание: для добавления листа нужен отдельный блок записи, т.к. файл уже закрыт.
 					try:
 						with pd.ExcelWriter(os.path.join(OUT_DIR, f'cost_analysis_eur_{timestamp}.xlsx'), mode='a',
 											engine='openpyxl', if_sheet_exists='replace') as writer:
 							forecast_df_export = forecast_result.reset_index().rename(columns={'index': 'Дата'})
-							forecast_df_export.to_excel(writer, sheet_name=f'Прогноз {TARGET_CATEGORY}', index=False)
+							# Ограничение имени листа до 31 символа
+							sheet_name = f"Прогноз {TARGET_CATEGORY}"[:31]
+							forecast_df_export.to_excel(writer, sheet_name=sheet_name, index=False)
+							forecast_categories.append(TARGET_CATEGORY)
 
 						QMessageBox.information(
 							parent_widget,
@@ -745,16 +757,27 @@ def analyze_monthly_cost_cont(parent_widget, df, start_date, end_date):
 											f"Не удалось добавить лист прогноза в Excel: {str(e)}")
 
 			except Exception as e:
-				QMessageBox.warning(parent_widget, "Ошибка Прогноза",
-									f"Не удалось выполнить прогноз SARIMA для {TARGET_CATEGORY}: {str(e)}")
+				QMessageBox.warning(parent_widget, f"Ошибка Прогноза ({TARGET_CATEGORY})",
+									f"Не удалось выполнить прогноз SARIMA : {str(e)}")
 
+		# 5. Общее уведомление о завершении цикла
+		if not forecast_categories:
+			final_message = "Прогнозы не были выполнены ни для одной дисциплины из-за ошибок."
 		else:
-			QMessageBox.warning(
-				parent_widget,
-				"Прогноз SARIMA",
-				f"Не найдена дисциплина с долей >= {MIN_TRASHOLD_PERCENT}% и CV < {SIGNIFICANT_CV_THRESHOLD} для надежного прогноза."
-			)
+			final_message = f"Прогноз SARIMA успешно завершен для следующих дисциплин: {', '.join(forecast_categories)}."
 
+		QMessageBox.information(
+			parent_widget,
+			"Прогнозы завершены",
+			final_message
+		)
+
+	else:
+		QMessageBox.warning(
+			parent_widget,
+			"Прогноз SARIMA",
+			f"Не найдена дисциплина с долей >= {MIN_TRASHOLD_PERCENT}% и CV < {SIGNIFICANT_CV_THRESHOLD} для надежного прогноза."
+		)
 
 	QMessageBox.information(
 		parent_widget,
