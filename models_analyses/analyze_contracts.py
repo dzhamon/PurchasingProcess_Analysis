@@ -222,7 +222,7 @@ def analyzeNonEquilSums(parent, data_df):
 """
 
 
-def data_preprocessing_and_analysis(df):
+def data_preprocessing_and_analysis(df, OUT_DIR):
 	import pandas as pd
 	import os
 	
@@ -238,12 +238,12 @@ def data_preprocessing_and_analysis(df):
 		min_date_o = min_date.strftime('%Y-%m-%d')
 		
 		# загрузим из таблицы data_kp соотвествующие этим датам и уникальным номерам Лоты
-		from utils.config import SQL_PATH, BASE_DIR
+		from utils.config import SQL_PATH
 		import sqlite3
 		
-		# Создадим папку для результатов, если ее еще нет
-		OUT_DIR = os.path.join(BASE_DIR, "Trend_Analyze")
-		os.makedirs(OUT_DIR, exist_ok=True)
+		# # Создадим папку для результатов, если ее еще нет
+		# OUT_DIR = os.path.join(BASE_DIR, "Trend_Analyze")
+		# os.makedirs(OUT_DIR, exist_ok=True)
 		
 		# соединяемся сбазой данных
 		db_path = SQL_PATH
@@ -307,6 +307,28 @@ def data_preprocessing_and_analysis(df):
 		# Фильтрация аномальных значений
 		# logging.info('Фильтрация аномальных значений')
 		df_merged = df_merged[(df_merged['unit_price'] > 0) & (df_merged['quantity'] > 0)]
+
+		# Подготовим df_merged к выводу в Excel-файл
+
+		results_df = cont_less_lots_df.groupby(
+			[
+				'lot_number',       # Группируем по лоту
+				'counterparty_name',  # Группируем по поставщику
+				'contract_currency'   # Группируем по валюте
+			]
+		).agg(
+			# Вычисляем сумму общей суммы контракта для этого сочетания
+			Contract_name=('contract_name', 'first'),
+			Total_Amount_Sum=('total_contract_amount', 'sum'),
+			# Также можно посчитать, сколько позиций у этого поставщика в этом лоте
+			Item_Count=('product_name', 'size')
+		).reset_index()
+
+		print(results_df)
+
+		output_path = os.path.join(OUT_DIR, "Contracts_Without_Lots_grped.xlsx")
+		results_df.to_excel(output_path, index=False)
+		print(f"Kонтракты без Лотов сохранены в: {output_path}")
 		
 		# Добавление временных меток
 		# logging.info('Добавление временных меток')

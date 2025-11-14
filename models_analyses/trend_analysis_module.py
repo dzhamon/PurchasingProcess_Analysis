@@ -7,7 +7,7 @@ from utils.config import BASE_DIR
 
 
 # Определяем корневую директорию для всех тренд-анализов
-TREND_ANALYSIS_ROOT_DIR = os.path.join(BASE_DIR, 'Analysis-Results', 'Trend-Analysis')
+TREND_ANALYSIS_ROOT_DIR = os.path.join(BASE_DIR, 'Trend-Analysis')
 
 # -- 1. Универсальная функция для анализа одного элемента
 
@@ -96,7 +96,20 @@ def analyze_time_series_data(df_data: pd.DataFrame, group_column: str, group_val
 	return
 
 def perform_actual_trend_analysis(df_data: pd.DataFrame, selected_column: str, selected_value: str,
-                                  output_subfolder: str = None, parent_widget: QWidget = None):
+                                  output_subfolder: str = None, output_base_dir=None, parent_widget: QWidget = None):
+
+	if output_base_dir is None:
+		base_dir = os.path.join("Analysis-Results", "Trend_Analyze")
+	else:
+		# Используем переданный OUT_DIR
+		base_dir = output_base_dir
+
+	# Собираем полный путь для сохранения результатов
+	output_path = os.path.join(base_dir, output_subfolder)
+
+	# Создаем папку, если она не существует
+	os.makedirs(output_path, exist_ok=True)
+
 	if selected_column == 'project_name':
 		analyze_time_series_data(df_data, selected_column, selected_value,
 		                         output_subfolder=output_subfolder, parent_widget=parent_widget)
@@ -109,11 +122,24 @@ def perform_actual_trend_analysis(df_data: pd.DataFrame, selected_column: str, s
 # Новая функция для анализа нескольких дисциплин в рамках уже отфильтрованного проекта
 def analyze_multiple_disciplines_in_project(df_data: pd.DataFrame, selected_column: str,
                                             selected_value: str, output_subfolder: str = None,
-                                            parent_widget: QWidget = None):
+                                            output_base_dir=None, parent_widget: QWidget = None):
 	"""
 	Выполняет тренд-анализ для списка указанных дисциплин в рамках переданного DataFrame.
 	Предполагается, что df_data уже отфильтрован по проекту
 	"""
+	# Определяем базовую папку.
+	if output_base_dir is None:
+		base_dir = os.path.join("Analysis-Results", "Trend_Analyze")
+	else:
+		# Используем переданный OUT_DIR
+		base_dir = output_base_dir
+
+	# Собираем полный путь
+	output_path = os.path.join(base_dir, output_subfolder)
+
+	# Создаем папку, если она не существует
+	os.makedirs(output_path, exist_ok=True)
+
 	print(f"DEBUG: perform_actual_trend_analysis вызван для {selected_column}: {selected_value}. output_subfolder = {output_subfolder}")
 	if selected_column =='project_name':
 		analyze_time_series_data(df_data, selected_column, selected_value, output_subfolder=output_subfolder,
@@ -128,7 +154,7 @@ def analyze_multiple_disciplines_in_project(df_data: pd.DataFrame, selected_colu
 # Новая функция для анализа нескольких дисциплин в рам ках уже отфильтрованного проекта
 
 def analyze_multiple_disciplines_in_project(df_data: pd.DataFrame, disciplines_to_analyze: list,
-                                            output_subfolder: str = None, # Новый аргумент
+                                            output_subfolder: str = None, output_base_dir=None,
                                             parent_widget: QWidget = None):
 	""" --- Начало анализа по дисциплинам, выбранным в рамках анализируемого проекта ---"""
 	print(f"DEBUG: analyze_multiple_disciplines_in_project вызван. output_subfolder = {output_subfolder}")
@@ -152,6 +178,3 @@ def analyze_multiple_disciplines_in_project(df_data: pd.DataFrame, disciplines_t
 	
 	QMessageBox.information(parent_widget, "Анализ завершен", "Тренд-анализ выбранных дисциплин завершен.")
 
-# ... (остальные функции, например, analyze_all_disciplines, если она еще нужна для отдельного случая) ...
-# Обратите внимание: analyze_all_disciplines, если она была, теперь будет использовать
-# analyze_multiple_disciplines_in_project

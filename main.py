@@ -742,16 +742,22 @@ class Window(QMainWindow):
             self._current_filtered_df = self._current_filtered_df.drop_duplicates()
             self.show_progress(30)
 
-            df_merged, cont_less_lots_df = data_preprocessing_and_analysis(self._current_filtered_df)
+            # # Создадим папку для результатов, если ее еще нет
+            from utils.config import BASE_DIR
+            OUT_DIR = os.path.join(BASE_DIR, "Trend_Analyze")
+            os.makedirs(OUT_DIR, exist_ok=True)
+
+            df_merged, cont_less_lots_df = data_preprocessing_and_analysis(self._current_filtered_df, OUT_DIR)
             self.show_progress(70)
 
-            dialog = SelectionDialog(df_merged=df_merged, parent=self)
+            dialog = SelectionDialog(df_merged=df_merged, out_dir=OUT_DIR, parent=self)
             self.show_progress(100)
             self.hide_progress()
 
             dialog.exec_()
 
     # построение множественной регресии и корреляционный анализ
+    """ Моделирование и прогнозирование"""
     def run_prophet_and_arima(self):
         # загружаем контракты с заданным диапазоном дат
         if not hasattr(self, "_current_filtered_df") or self._current_filtered_df.empty:

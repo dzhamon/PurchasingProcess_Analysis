@@ -14,13 +14,14 @@ class SelectionDialog(QDialog):
 	Модальный диалог для выбора параметров тренд-анализа.
 	"""
 	
-	def __init__(self, df_merged, parent=None):
+	def __init__(self, df_merged, out_dir, parent=None):
 		super().__init__(parent)
 		self.setWindowTitle("Выбор проекта и дисциплин для тренд-анализа")
 		self.setMinimumSize(600, 650)  # x, y, width, height
 		
 		self.df_merged = df_merged
 		self.project_selection_group = None
+		self.out_dir = out_dir
 		
 		self.init_ui()
 	
@@ -145,10 +146,12 @@ class SelectionDialog(QDialog):
 			return
 		# Создаем имя подпапки для проекта
 		project_folder_name = self.get_safe_project_folder_name(self.selected_project)
+
+		full_output_path = os.path.join(self.out_dir, project_folder_name)
 		
 		QMessageBox.information(self, "Анализ запущен",
 		                        f"Запускаем тренд-анализ для всего проекта: '{self.selected_project}'\n"
-		                        f"Результаты будут сохранены в папку: 'Analysis-Results/Trend_Analysis/{project_folder_name}'")
+		                        f"Результаты будут сохранены в папку: {full_output_path}'")
 		
 		# Фильтруем DataFrame для передачи в функцию анализа
 		df_for_analysis = self.df_merged[self.df_merged['project_name'] == self.selected_project].copy()
@@ -159,6 +162,7 @@ class SelectionDialog(QDialog):
 			'project_name',  # Указываем, что анализируем по project_name
 			self.selected_project,  # Передаем само имя проекта
 			output_subfolder=project_folder_name,
+			output_base_dir=self.out_dir,
 			parent_widget=self
 		)
 	
@@ -178,26 +182,23 @@ class SelectionDialog(QDialog):
 			return
 		# создаем имя подпапки для проекта
 		project_folder_name = self.get_safe_project_folder_name(self.selected_project)
+
+		full_output_path = os.path.join(self.out_dir, project_folder_name)
 		
 		QMessageBox.information(self, "Анализ запущен",
 		                        f"Запускаем тренд-анализ для дисциплин {', '.join(selected_disciplines)} "
 		                        f"в проекте '{self.selected_project}'\n"
-		                        f"Результаты будут сохранены в папку: 'Analysis-Results/Trend_Analysis/{project_folder_name}'")
+		                        f"Результаты будут сохранены в папку: {full_output_path}'")
 		
 		# Сначала фильтруем основной DataFrame по выбранному проекту
 		df_for_disciplines_analysis = self.df_merged[self.df_merged['project_name'] == self.selected_project].copy()
 		
-		analyze_multiple_disciplines_in_project(
-			df_for_disciplines_analysis,
-			selected_disciplines,
-			output_subfolder=project_folder_name,  # <-- ЭТА СТРОКА ДОЛЖНА БЫТЬ
-			parent_widget=self
-		)
-		
 		# Вызываем новую функцию для анализа нескольких дисциплин в проекте
 		analyze_multiple_disciplines_in_project(
 			df_for_disciplines_analysis,  # DataFrame, уже отфильтрованный по проекту
-			selected_disciplines,  # Список выбранных дисциплин
+			selected_disciplines,
+			output_subfolder=project_folder_name,
+			output_base_dir=self.out_dir,
 			parent_widget=self
 		)
 	
