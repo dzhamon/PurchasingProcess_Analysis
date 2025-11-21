@@ -23,167 +23,184 @@ def regression_analysis_month_by_month(contract_df):
 			за следующий месяц, учитывая предыдущие 2-3 месяца
 	---"""
 
+	import numpy as np
+	import pandas as pd
+	import os
+	import sys
+	from sklearn.preprocessing import StandardScaler
+	from sklearn.model_selection import train_test_split
+
 	def feature_engineering(f_contracts, sub_folder):
+		"""
+        Исправленная версия с правильной последовательностью операций
+        """
 
-		# # --- Создание признаков (Feature Engineering) ---
-		# # 1. Агрегация по месяцам и поставщикам
-		# # Создадим основной DataFrame для признаков на основе недельной (месячной) агрегации
-		# # Это будет агрегация по МЕСЯЦУ, а не по поставщикам в столбцах
-		#
-		# # Проверяем, существует ли директория, и если нет, создаем ее
-		# if not os.path.exists(sub_folder):
-		# 	os.makedirs(sub_folder)  # os.makedirs() создает промежуточные директории
-		#
-		# df_features = f_contracts.groupby('contract_week').agg(
-		# 	avg_unit_price=('unit_price_eur', 'mean'),
-		# 	total_weekly_amount=('total_contract_amount_eur', 'sum'),
-		# 	weekly_contract_count=('total_contract_amount_eur', 'size'),  # Количество контрактов
-		# 	weekly_avg_contract_amount=('total_contract_amount_eur', 'mean'),  # Средняя сумма контракта
-		# 	weekly_unique_counterparties=('counterparty_name', lambda x: x.nunique())  # Количество уникальных контрагентов
-		# ).reset_index()
-		#
-		# df_features['contract_week'] = df_features['contract_week'].apply(lambda x: x.start_time)
-		#
-		# df_features['week_number'] = np.arange(len(df_features)) # фактически это индексы временного ряда
-		# df_features['week'] = df_features['contract_week'].dt.isocalendar().week # номер недели в году (сезонность)
-		# df_features['total_weekly_amount_smooth'] = df_features['total_weekly_amount'].rolling(window=3, min_periods=1).mean()
-		#
-		# # df_features = df_features.set_index('contract_week')  # Устанавливаем месяц как индекс
-		#
-		# # Создание лаговых признаков для всех интересующих нас колонок
-		# features_to_lag = ['avg_unit_price', 'total_weekly_amount',
-		# 				   'weekly_contract_count', 'weekly_avg_contract_amount',
-		# 				   'weekly_unique_counterparties', 'week']
-		# # весь интервал разбит на недели
-		# num_lags = 4  # Оставляем 4 лагов
-		#
-		# # 2. Создание целевой переменной - суммы контрактов в будущем.
-		# # Целевая переменная - общая сумма за следующие недели, сглаженная
-		# Y = np.log1p(np.maximum(df_features['total_weekly_amount_smooth'].shift(-1), 1)).dropna()
-		#
-		# # Создаем DataFrame для признаков Х, добавляя лаги
-		# X_list = []
-		# for feature in features_to_lag:
-		# 	for i in range(1, num_lags + 1):
-		# 		df_features[f'{feature}_lag_{i}'] = df_features[feature].shift(i)
-		# 	X_list.extend([f'{feature}_lag_{i}' for i in range(1, num_lags + 1)])
-		#
-		# X_list.extend(['week_number'])
-		#
-		# # Х - теперь будет содержать только лаговые признаки
-		# X = df_features[X_list].dropna()
-		#
-		# # Убедитесь, что X и y имеют одинаковое количество строк
-		# common_index = X.index.intersection(Y.index)
-		# X = X.loc[common_index]
-		# Y = Y.loc[common_index]
+		# ===== 1. СОЗДАНИЕ ПРИЗНАКОВ =====
+		from models_analyses.create_new_features import create_enhanced_features
+		data_dict = create_enhanced_features(f_contracts, sub_folder)
 
-		# --- начало логирования в файл --- №
-
-
-	# эта часть кода временно закомментирована
-
-		# Вызываем улучшенную версию с диагностикой
-		from models_analyses.improved_and_diagnostics import improved_feature_engineering
-		data_dict = improved_feature_engineering(f_contracts, sub_folder)
-
-		if data_dict is None:
-			print("Невозможно построить регрессию - недостаточно данных")
+		if data_dict is None or data_dict['X'].shape[0] < 15:
+			print("Недостаточно данных для построения модели")
 			return
 
 		X = data_dict['X']
 		Y = data_dict['Y']
 		use_log = data_dict['use_log']
 		test_size = data_dict['test_size']
+		df_features = data_dict['df_features']
+		num_lags = data_dict['num_lags']
 
-		log_file_path = os.path.join(OUT_DIR, 'analysis_log.log')
-		# Сохраняем текущий stdout, чтобы потом его восстановить
+		print(f"\nПризнаков: {X.shape[1]}, Наблюдений: {X.shape[0]}")
+
+		# ===== 2. МАСШТАБИРОВАНИЕ =====
+		scaler = StandardScaler()
+		X_scaled = scaler.fit_transform(X)
+
+		# ===== 3. РАЗДЕЛЕНИЕ НА TRAIN/TEST =====
+		X_train, X_test, Y_train, Y_test = train_test_split(
+			X_scaled, Y, test_size=test_size, shuffle=False
+		)
+
+		print(f"Обучающая выборка: {X_train.shape[0]}, Тестовая выборка: {X_test.shape[0]}")
+
+		# ===== 4. ОТБОР ПРИЗНАКОВ =====
+		from models_analyses.feature_selection import smart_feature_selection
+
+		# Определяем оптимальное количество признаков
+		optimal_k = max(10, min(20, X_train.shape[0] // 15))
+		print(f"\nОтбираем топ-{optimal_k} признаков из {X.shape[1]}...")
+
+		X_train_selected, X_test_selected, selected_features = smart_feature_selection(
+			X_train, Y_train, X_test, Y_test,
+			X.columns, sub_folder, top_k=optimal_k
+		)
+
+		# ===== 5. ОБУЧЕНИЕ И СРАВНЕНИЕ МОДЕЛЕЙ =====
+		from models_analyses.compare_regression_models import compare_regression_models
+
+		best_model_name, results_df, best_model = compare_regression_models(
+			X_train_selected, X_test_selected, Y_train, Y_test,
+			scaler, selected_features, sub_folder
+		)
+
+		# ===== 6. ЛОГИРОВАНИЕ РЕЗУЛЬТАТОВ В ФАЙЛ =====
+		log_file_path = os.path.join(sub_folder, 'analysis_log.log')
 		original_stdout = sys.stdout
 
-		# открываем файл для записи и перенаправляем stdout
-		with open(log_file_path, 'w') as f:
-			sys.stdout = f # весь последующий print(), будет идти в этот файл
+		with open(log_file_path, 'w', encoding='utf-8') as f:
+			sys.stdout = f
 
-			if X.empty or Y.empty:
-				print(
-					"ВНИМАНИЕ: X или y пусты после формирования признаков/целевой переменной. Невозможно выполнить регрессию.")
-				return
+			print("="*80)
+			print("ИТОГОВЫЙ ОТЧЕТ ПО РЕГРЕССИОННОМУ АНАЛИЗУ")
+			print("="*80)
 
-			print(f"Размер X: {X.shape}, Размер Y: {Y.shape}")
-			print(f"Количество признаков (столбцов в X): {X.shape[1]}")
-			print(f"Количество наблюдений (строк в X): {X.shape[0]}")
+			print(f"\n1. ДАННЫЕ:")
+			print(f"   Период: {df_features['contract_week'].min()} - {df_features['contract_week'].max()}")
+			print(f"   Всего недель: {len(df_features)}")
+			print(f"   Исходных признаков: {X.shape[1]}")
+			print(f"   Отобранных признаков: {len(selected_features)}")
+			print(f"   Обучающая выборка: {X_train_selected.shape[0]} наблюдений")
+			print(f"   Тестовая выборка: {X_test_selected.shape[0]} наблюдений")
 
-			# Шаг 2: Масштабирование признаков
-			# Для RandomForestRegressor
-			scaler = StandardScaler()
-			X_scaled = scaler.fit_transform(X)
+			print(f"\n2. ОТОБРАННЫЕ ПРИЗНАКИ:")
+			for i, feature in enumerate(selected_features, 1):
+				print(f"   {i:2d}. {feature}")
 
-			Y_log = Y
+			print(f"\n3. РЕЗУЛЬТАТЫ МОДЕЛЕЙ:")
+			print(results_df.to_string(index=False))
 
-			# Шаг 3: Разделение данных на обучающую и тестовую выборки
-			# X_train, X_test, Y_train, Y_test = train_test_split(X_scaled, Y, test_size=0.3, random_state=42)
-			# TimeSeriesSplit обеспечивает последовательное разделение (без перемешивания)
-			tscv = TimeSeriesSplit(n_splits=5)
-
-			for train_index, test_index in tscv.split(X_scaled):
-				X_train, X_test = X_scaled[train_index], X_scaled[test_index]
-				Y_train, Y_test = Y_log.iloc[train_index], Y_log.iloc[test_index]
-
-			print(f"Количество наблюдений в обучающей выборке: {X_train.shape[0]}")
-			print(f"Количество наблюдений в тестовой выборке: {X_test.shape[0]}")
-
-			# Вызываем функции сравнения
-			from models_analyses.compare_regression_models import compare_regression_models
-			best_model_name, results_df, best_model = compare_regression_models(
-					X_train, X_test, Y_train, Y_test, scaler, X.columns, sub_folder
-			)
-
-			# Проверяем качество лучшей модели
 			best_r2 = results_df.iloc[0]['R2_test']
+			print(f"\n4. ЛУЧШАЯ МОДЕЛЬ: {best_model_name}")
+			print(f"   R^2 на тесте: {best_r2:.4f}")
 
 			if best_r2 < 0:
-				print(f"\nВНИМАНИЕ: Лучшая модель ({best_model_name}) имеет отрицательный R^2 = {best_r2:.4f}")
-				print("Модель предсказывает хуже, чем простое среднее значение.")
-				print("Прогноз на будущее будет ненадежным, но будет выполнен для демонстрации.")
+				print("\n   ВНИМАНИЕ: Отрицательный R^2 означает, что модель")
+				print("   предсказывает хуже, чем простое среднее значение.")
+				print("   Прогноз будет ненадежным.")
+			elif best_r2 < 0.3:
+				print("\n   ВНИМАНИЕ: Низкий R^2 (<0.3) - модель объясняет")
+				print("   менее 30% вариации данных. Прогноз имеет высокую погрешность.")
+			elif best_r2 < 0.7:
+				print("\n   Модель имеет умеренное качество (R^2 < 0.7).")
+			else:
+				print("\n   Модель имеет хорошее качество (R^2 >= 0.7).")
 
-			# --- Прогнозирование будущего ---
-			print(f"\n--- Прогнозирование следующей недели ({best_model_name}) ---")
+			# ===== 7. ПРОГНОЗИРОВАНИЕ СЛЕДУЮЩЕЙ НЕДЕЛИ =====
+			print(f"\n5. ПРОГНОЗИРОВАНИЕ СЛЕДУЮЩЕЙ НЕДЕЛИ:")
 
-			# Подготавливаем данные последней недели для прогноза
-			df_weekly = data_dict['df_weekly']  # Получаем из data_dict
-			num_lags = data_dict['num_lags']
-			features_to_lag = ['total_amount', 'contract_count']
+			# Получаем последние значения всех признаков
+			last_row_data = {}
 
-			last_week_features_data = {}
-			for feature_base in features_to_lag:
-				for i in range(1, num_lags + 1):
-					col_name = f'{feature_base}_lag_{i}'
-					if len(df_weekly) >= i:
-						last_week_features_data[col_name] = df_weekly[feature_base].iloc[-i]
+			# Для каждого отобранного признака берем последнее доступное значение
+			for feature in selected_features:
+				if feature in df_features.columns:
+					# Если признак есть в df_features напрямую
+					last_row_data[feature] = df_features[feature].iloc[-1]
+				else:
+					# Если это лаговый признак, нужно получить его правильно
+					# Например, 'total_amount_lag_1' = значение total_amount на 1 неделю назад
+					if '_lag_' in feature:
+						base_feature = feature.rsplit('_lag_', 1)[0]
+						lag_num = int(feature.rsplit('_lag_', 1)[1])
+
+						if base_feature in df_features.columns:
+							if len(df_features) >= lag_num:
+								last_row_data[feature] = df_features[base_feature].iloc[-lag_num]
+							else:
+								last_row_data[feature] = 0
+						else:
+							last_row_data[feature] = 0
 					else:
-						last_week_features_data[col_name] = 0
+						last_row_data[feature] = 0
 
-			# Добавляем week_number
-			last_week_features_data['week_number'] = len(df_weekly)
+			# Создаем DataFrame для прогноза
+			last_week_df = pd.DataFrame([last_row_data], columns=selected_features)
 
-			last_week_features_df = pd.DataFrame([last_week_features_data], columns=X.columns)
-			last_week_scaled = scaler.transform(last_week_features_df)
+			# Масштабируем (только для отобранных признаков нужен новый scaler)
+			# Создаем маску для отобранных признаков в исходном X
+			selected_indices = [list(X.columns).index(f) for f in selected_features]
+
+			# Масштабируем только нужные колонки
+			X_for_scaler = X.iloc[:, selected_indices]
+			scaler_selected = StandardScaler()
+			scaler_selected.fit(X_for_scaler)
+
+			last_week_scaled = scaler_selected.transform(last_week_df)
 
 			# Предсказание
 			predicted_value = best_model.predict(last_week_scaled)[0]
 
-			# Обратное преобразование из log (если использовали)
+			# Обратное преобразование из log
 			if use_log:
-				predicted_next_week_amount = np.expm1(predicted_value)
+				predicted_next_week = np.expm1(predicted_value)
 			else:
-				predicted_next_week_amount = predicted_value
+				predicted_next_week = predicted_value
 
-			print(f"Предсказанная общая сумма контрактов на следующую неделю: {predicted_next_week_amount:,.2f} EUR")
-			print(f"Средняя сумма за прошлые недели: {df_weekly['total_amount'].mean():,.2f} EUR")
-			print(f"Последняя неделя: {df_weekly['total_amount'].iloc[-1]:,.2f} EUR")
+			print(f"\n   Прогноз на следующую неделю: {predicted_next_week:,.2f} EUR")
+			print(f"   Последняя неделя (факт): {df_features['total_amount'].iloc[-1]:,.2f} EUR")
+			print(f"   Средняя за период: {df_features['total_amount'].mean():,.2f} EUR")
+			print(f"   Медиана за период: {df_features['total_amount'].median():,.2f} EUR")
 
-			print("\nАнализ регрессии завершен.")
+			# Оценка отклонения прогноза от среднего
+			avg_amount = df_features['total_amount'].mean()
+			deviation_pct = ((predicted_next_week - avg_amount) / avg_amount) * 100
 
+			print(f"\n   Отклонение прогноза от среднего: {deviation_pct:+.1f}%")
+
+			print("\n" + "="*80)
+			print("АНАЛИЗ ЗАВЕРШЕН")
+			print("="*80)
+
+		# Восстанавливаем stdout
+		sys.stdout = original_stdout
+		print(f"\nПолный отчет сохранен: {log_file_path}")
+
+		return {
+			'best_model_name': best_model_name,
+			'best_r2': best_r2,
+			'prediction': predicted_next_week,
+			'selected_features': selected_features
+		}
 
 	# ================= Здесь начало основного модуля regression_analysis_month_by_month ===================
 
@@ -207,26 +224,8 @@ def regression_analysis_month_by_month(contract_df):
 
 	# Удалим строки с некорректными датами
 	filtered_contracts.dropna(subset=['contract_signing_date'], inplace=True)
-
-	# Шаг 2: Создадим столбец для группировки по месяцу и году.
-	# Мы используем .dt.to_period('M'), чтобы получить период год-неделя('Год-Месяц').
+	# Создаем столбец contract_week
 	filtered_contracts['contract_week'] = filtered_contracts['contract_signing_date'].dt.to_period('W')
-
-	# Шаг 3: Группировка и агрегация
-	# Мы считаем общую сумму контрактов в EUR и количество уникальных контрактов.
-
-	weekly_aggregation = filtered_contracts.groupby('contract_week').agg(
-		avg_unit_price=('unit_price_eur', 'mean'),
-		total_amount_eur=('total_contract_amount_eur', 'sum'),
-		number_of_contracts=('contract_number', 'nunique') # Уникальные номера контрактов
-	).reset_index()
-
-	# Преобразование столбца contract_month обратно в строку для удобства отображения/визуализации
-	weekly_aggregation['contract_week'] = weekly_aggregation['contract_week'].astype(str)
-
-	filtered_contracts = filtered_contracts.dropna(
-		subset=['contract_week', 'counterparty_name', 'unit_price_eur', 'total_contract_amount_eur',
-		        'project_name', 'discipline'])  # Добавлены project_name, discipline
 
 	project_to_analyze = filtered_contracts['project_name'].unique() # для присвоения имен директорий
 

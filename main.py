@@ -293,6 +293,7 @@ class Window(QMainWindow):
 
         # Меню Анализ по Контрактам
         analysisMenuContract = menuBar.addMenu("Анализ данных по Контрактам")
+        analysisMenuContract.addAction(self.analyzeProcurementAction)
         analysisMenuContract.addAction(self.analyzeClasterAction)
         analysisMenuContract.addAction(self.analyzeMonthlyExpensesAction)
         analysisMenuContract.addAction(self.trend_analyses_action)
@@ -396,6 +397,11 @@ class Window(QMainWindow):
         # )
 
         # Действия для меню Анализ данных по Контрактам
+        self.analyzeProcurementAction = QAction("Анализ закупок", self)
+        self.setActionTooltip(self.analyzeProcurementAction, "Анализ данных по Контрактам",
+                             "Полный анализ закупок",
+        )
+
         self.analyzeClasterAction = QAction("Кластерный анализ", self)
         self.setActionTooltip(self.analyzeClasterAction,"Анализ данных по Контрактам",
             "Классификация поставщиков",
@@ -482,6 +488,7 @@ class Window(QMainWindow):
         )
 
         # Подключение сигналов к методам Анализа данных по Контрактам
+        self.analyzeProcurementAction.triggered.connect(self.run_procurement_analysis)
         self.analyzeClasterAction.triggered.connect(self.run_ClusterAnalyze)
         self.analyzeMonthlyExpensesAction.triggered.connect(self.run_analyze_monthly_cost)
         self.trend_analyses_action.triggered.connect(self.run_trend_analyses)
@@ -604,6 +611,15 @@ class Window(QMainWindow):
                 visualizer.plot_line_chart()
         else:
             QMessageBox.warning(self, "Ошибка", "Нет данных KPI для визуализации.")
+
+    def run_procurement_analysis(self):
+        # Метод анализа закупок, поиска возможных аномалий, статистика и пр.
+        if self._current_filtered_df is not None:
+            self.progress_bar.show()
+            self.show_progress(10)
+        from models_analyses.advanced_procurement_analysis import advanced_procurement_analysis
+        advanced_procurement_analysis(self._current_filtered_df)
+        pass
 
     def run_analyze_monthly_cost(self):
         # метод для анализа месячных затрат

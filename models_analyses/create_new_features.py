@@ -12,6 +12,11 @@ def create_enhanced_features(f_contracts, sub_folder):
     print("СОЗДАНИЕ РАСШИРЕННЫХ ПРИЗНАКОВ")
     print("="*80)
 
+    # ===== 0. ПОДГОТОВКА ДАННЫХ =====
+    print("\n0. Подготовка данных...")
+    print(f"   Всего контрактов: {len(f_contracts)}")
+    print(f"   Период: {f_contracts['contract_signing_date'].min()} - {f_contracts['contract_signing_date'].max()}")
+
     # ===== 1. БАЗОВАЯ АГРЕГАЦИЯ ПО НЕДЕЛЯМ =====
     print("\n1. Базовая агрегация по неделям...")
 
@@ -65,7 +70,7 @@ def create_enhanced_features(f_contracts, sub_folder):
     # Вариативность размеров контрактов
     df_features['contract_cv'] = df_features['std_contract'] / df_features['avg_contract_size'].replace(0, 1)
 
-    # Флаг наличия крупного контракта (> 75-го процентиля)
+    # Флаг наличия крупного контракта (> 75-го перцентиля)
     large_threshold = df_features['max_contract'].quantile(0.75)
     df_features['has_large_contract'] = (df_features['max_contract'] > large_threshold).astype(int)
 
@@ -229,15 +234,25 @@ def create_enhanced_features(f_contracts, sub_folder):
     print(f"   Всего лаговых признаков: {len(lags)}")
     print(f"   Примеры: {', '.join(lags[:5])}")
 
-    print("\n" + "="*80)
+    # Определяем размер тестовой выборки в зависимости от объема данных
+    if num_observations < 40:
+        test_size = 0.2
+    elif num_observations < 80:
+        test_size = 0.25
+    else:
+        test_size = 0.3
+
+    print(f"\nРекомендуемый размер тестовой выборки: {test_size*100:.0f}%")
+    print("="*80)
 
     return {
         'X': X,
         'Y': Y,
         'use_log': use_log,
         'num_lags': num_lags,
-        'df_features': df_features,
-        'feature_columns': feature_columns
+        'df_features': df_features,  # ВАЖНО: возвращаем для прогноза
+        'feature_columns': feature_columns,
+        'test_size': test_size
     }
 
 
