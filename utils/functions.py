@@ -38,6 +38,10 @@ company_mapped_grouped = {
 	'Омский з-д запорн армат' :['ООО «Омский завод запорной арматуры»', 'ООО ОМСКИЙ ЗАВОД ЗАПОРН АРМАТ'],
 	'SBW ELECTRO-MECH IMP AND EXP CO' : ['Не использовать SBW ELECTRO-MECHANICS IMPORT AND EXPORT CO'],
 	'ООО «Челябинский компрессорный завод»' : ['[Удалено] ООО «Челябинск компрессор завод»'],
+	'OOO GAMMA COLOR SERVICE' : ['GAMMA COLOR SERVICE ООО'],
+	'BAGRAIN TOO' : ['БАГРАЙН ТОО', 'BAGRAIN TECHNOCOLOR ТОО'],
+	'CERAMIC BRIKS OOO' : ['СП ООО "CERAMIC BRICKS"', 'не использовать CERAMIC BRICKS'],
+	'POINT VISION СП ООО' : ['не использовать дубль Point Vision ПИИ', 'Point Vision ПИИ']
 }
 
 # Функция обрезки нежелательных фраз

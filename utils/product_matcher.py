@@ -13,6 +13,7 @@ import numpy as np
 import re
 from difflib import SequenceMatcher
 from typing import Tuple, Dict, List, Any
+from utils.product_matcher_improved import ProductMatcher
 
 
 # ============================================================================
@@ -395,103 +396,83 @@ def smart_product_match(
 # ============================================================================
 # ФУНКЦИЯ ДЛЯ ПОИСКА В ДАТАФРЕЙМЕ
 # ============================================================================
-
-def find_comparable_products(
-        df: pd.DataFrame,
-        threshold: float = 0.85,
-        method: str = 'combined',
-        verbose: bool = True
-) -> List[Dict[str, Any]]:
+def fast_find_comparable_products(df, threshold=0.85):
     """
-    Находит группы сопоставимых товаров в датафрейме.
+    БЫСТРЫЙ поиск сопоставимых товаров с группировкой по категориям
 
     Args:
-        df: DataFrame с колонками 'product_name', 'counterparty_name', 'unit_price_uzs'
-        threshold: минимальный порог сходства (0.0-1.0), по умолчанию 0.85
-        method: алгоритм сравнения, по умолчанию 'combined'
-        verbose: выводить ли прогресс, по умолчанию True
+        df: DataFrame с колонками ['Наименование', 'Поставщик', 'Цена за единицу']
+        threshold: порог схожести (0.85 = 85%)
+        method: метод сравнения (не используется, оставлен для совместимости)
 
     Returns:
-        list: список групп с результатами сравнения
-
-    Example:
-        >>> results = find_comparable_products(df, threshold=0.85)
-        >>> for group in results:
-        ...     if group['price_diff_pct'] > 30:
-        ...         print(f"Разница в ценах: {group['price_diff_pct']:.1f}%")
+        list: список словарей с найденными совпадениями
     """
-    if verbose:
-        print(f"\nПоиск сопоставимых товаров...")
-        print(f"Записей: {len(df)}, Порог: {threshold}, Метод: {method}")
-        print("-" * 80)
+    print("="*80)
+    print("БЫСТРЫЙ ПОИСК СОПОСТАВИМЫХ ТОВАРОВ")
+    print("="*80)
 
-    results = []
-    processed = set()
+    print("\n1. Добавление категорий и типов товаров...")
+    df = df.copy()
 
-    # Проверяем наличие необходимых колонок
-    required_cols = ['product_name', 'counterparty_name', 'unit_price_eur']
-    for col in required_cols:
-        if col not in df.columns:
-            raise ValueError(f"Отсутствует колонка: {col}")
+    # df['category'] = df['product_name'].apply(
+    #     lambda x: ProductMatcher.extract_key_features(x)['category']
+    # )
+    # df['product_type'] = df['product_name'].apply(
+    #     lambda x: ProductMatcher.extract_key_features(x)['type']
+    # )
 
-    products = df[required_cols].values
+    features = df['product_name'].apply(lambda x: ProductMatcher.extract_key_features(x))
+    df['category'] = features.apply(lambda x: x['category'])
+    df['product_type'] = features.apply(lambda x: x['type'])
 
-    for i in range(len(products)):
-        if i in processed:
+    # Создаем ключ для группировки (категория + тип)
+    df['key'] = df['category'].astype(str) + '_' + df['product_type'].astype(str)
+
+    all_matches =[]
+
+    # Группируем по ключу
+    for key, group in df.groupby('key'):
+        if len(group) < 2:
             continue
 
-        matches = [i]
-        prod1, supplier1, price1 = products[i]
+        category, product_type = key.split('_', 1)
+        print(f"Обработка: {category} / {product_type}: {len(group)} товаров")
 
-        for j in range(i + 1, len(products)):
-            if j in processed:
-                continue
+        # Внутри группы сравниваем
+        for i, row1 in group.iterrows():
+            for j, row2 in group.iloc[group.index.get_loc(i)+1:].iterrows():
 
-            prod2, supplier2, price2 = products[j]
+                # Только если разные поставщики
+                if row1['counterparty_name'] != row2['counterparty_name']:
+                    similarity = ProductMatcher.calculate_similarity(
+                        row1['product_name'],
+                        row2['product_name']
+                    )
 
-            # Не сравниваем товары от одного поставщика
-            if supplier1 == supplier2:
-                continue
+                    if similarity >= threshold:
+                        # Рассчитываем разницу в ценах
+                        price1 = row1['unit_price_eur']
+                        price2 = row2['unit_price_eur']
+                        price_diff = abs(price2 - price1)
+                        price_diff_pct = (price_diff / price1 * 100) if price1 > 0 else 0
 
-            # Сравнение
-            from utils.product_matcher_improved import ProductMatcher
-            score = ProductMatcher.calculate_similarity(prod1, prod2)
+                        all_matches.append({
+                            'Товар_1': row1['product_name'],
+                            'Поставщик_1': row1['counterparty_name'],
+                            'Цена_1': price1,
+                            'Товар_2': row2['product_name'],
+                            'Поставщик_2': row2['counterparty_name'],
+                            'Цена_2': price2,
+                            'Схожесть': similarity,
+                            'Разница в цене': price_diff,
+                            'Процент отклонения': price_diff_pct,
+                            'Категория': category,
+                            'Тип': product_type
+                        })
 
-            if score >= threshold:
-                matches.append(j)
-                processed.add(j)
+    return pd.DataFrame(all_matches)
 
-        if len(matches) > 1:
-            # Нашли группу сопоставимых товаров
-            group = []
-            for idx in matches:
-                prod, supplier, price = products[idx]
-                group.append({
-                    'index': idx,
-                    'product': prod,
-                    'supplier': supplier,
-                    'price': price
-                })
-                processed.add(idx)
-
-            # Анализ цен в группе
-            prices = [item['price'] for item in group]
-            min_price = min(prices)
-            max_price = max(prices)
-            price_diff_pct = ((max_price - min_price) / min_price * 100) if min_price > 0 else 0
-
-            results.append({
-                'group': group,
-                'count': len(group),
-                'min_price': min_price,
-                'max_price': max_price,
-                'price_diff_pct': price_diff_pct
-            })
-
-    if verbose:
-        print(f"\n✓ Найдено групп сопоставимых товаров: {len(results)}")
-
-    return results
 
 
 # ============================================================================
@@ -518,9 +499,9 @@ def find_price_discrepancies(
 
     Example:
         >>> discrepancies = find_price_discrepancies(df, price_diff_threshold=30)
-        >>> print(discrepancies[['Категория', 'Поставщиков', 'Разница_%']])
+        >>> print(discrepancies[['category', 'Поставщиков', 'Разница_%']])
     """
-    comparable_groups = find_comparable_products(df, threshold, method, verbose=False)
+    comparable_groups = fast_find_comparable_products(df, threshold)
 
     # Фильтруем группы с большой разницей в ценах
     high_diff_groups = [

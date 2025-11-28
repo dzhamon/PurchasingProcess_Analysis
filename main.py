@@ -614,12 +614,10 @@ class Window(QMainWindow):
 
     def run_procurement_analysis(self):
         # Метод анализа закупок, поиска возможных аномалий, статистика и пр.
-        if self._current_filtered_df is not None:
-            self.progress_bar.show()
-            self.show_progress(10)
+        self.progress_bar.show()
+        self.show_progress(10)
         from models_analyses.advanced_procurement_analysis import advanced_procurement_analysis
         advanced_procurement_analysis(self._current_filtered_df)
-        pass
 
     def run_analyze_monthly_cost(self):
         # метод для анализа месячных затрат
