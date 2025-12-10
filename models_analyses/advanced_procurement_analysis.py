@@ -65,11 +65,12 @@ def create_summary_report(comparable_df, critical_df):
 def advanced_procurement_analysis(df):
     # Импорт модуля сопоставимых товаров
     try:
-        from utils.product_matcher import (
-            fast_find_comparable_products,
-            find_price_discrepancies,
-            smart_product_match
-        )
+        # from utils.product_matcher_optimized import (
+        #     fast_find_comparable_products,
+        #     find_price_discrepancies,
+        #     smart_product_match
+        # )
+        from utils.product_matcher_save import fast_find_comparable_products
         MATCHER_AVAILABLE = True
         print("Модуль product_matched загружен")
     except ImportError:
